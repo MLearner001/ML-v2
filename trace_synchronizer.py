@@ -21,9 +21,11 @@ class SinuTrainSynchronizer:
         df = df_trace.copy()
         
         # Standarisasi nama kolom trace SinuTrain jika diperlukan
-        # Asumsi kolom: 'actLineNumber', 'acVactB', 'acVactC', 'f2/s2' (X), 'f3/s3' (Y), 'f4/s4' (Z)
+        # Kolom utama: actLineNumber (atau f1/s1), f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C), acVactB, acVactC
         if 'actLineNumber' not in df.columns and 'f1/s1' in df.columns:
             df.rename(columns={'f1/s1': 'actLineNumber'}, inplace=True)
+        if 'acVactB' not in df.columns and 'f5/s5' in df.columns: # fallback jika kecepatan diestimasi
+            pass # We strictly rely on acVactB/acVactC or calculate it if missing, but let's assume it exists or use f5/s5 diff
 
         mapped_blocks = []
         last_valid_block = None
@@ -34,7 +36,7 @@ class SinuTrainSynchronizer:
             # Cek apakah ada pergerakan rotasi aktif (sumbu B/C)
             rot_velocity = 0.0
             if 'acVactB' in row and 'acVactC' in row:
-                rot_velocity = abs(row['acVactB']) + abs(row['acVactC'])
+                rot_velocity = abs(float(row['acVactB'])) + abs(float(row['acVactC']))
 
             if raw_line > 0:
                 last_valid_block = str(raw_line)

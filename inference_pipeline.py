@@ -9,6 +9,7 @@ import pandas as pd
 import tensorflow as tf
 from batch_gcode_parser import NCParser
 from dataset_preprocessor import DatasetPreprocessor
+from typing import Dict
 
 def predict_nc_file(mpf_filepath: str, 
                      model_path: str = "bilstm_feedrate_model.keras", 
