@@ -14,28 +14,55 @@ from dataset_preprocessor import DatasetPreprocessor
 from train_bi_lstm import run_training
 from inference_pipeline import predict_nc_file
 
-def run_training_pipeline(gcode_file: str, trace_file: str, output_model: str, scaler_path: str):
-    print(f"\n{'='*50}\n[TAHAP 1] Parsing NC & Geometri 3D\n{'='*50}")
-    parser = NCParser()
-    df_parsed = parser.parse_file(gcode_file)
-    print(f"Berhasil mengekstrak {len(df_parsed)} baris.")
+import glob
 
-    print(f"\n{'='*50}\n[TAHAP 2] Sinkronisasi Trace SinuTrain 4ms\n{'='*50}")
-    df_trace = pd.read_csv(trace_file)
-    syncer = SinuTrainSynchronizer()
-    df_trace_clean = syncer.clean_and_attribute_trace(df_trace, df_parsed['Block_ID'].tolist())
-    df_synced = syncer.match_and_calculate_targets(df_parsed, df_trace_clean)
+def run_training_pipeline(data_dir: str, output_model: str, scaler_path: str):
+    print(f"\n{'='*50}\n[MEMULAI BATCH TRAINING]\nMencari pasangan file G-Code (.mpf) dan Trace (.csv) di folder: {data_dir}\n{'='*50}")
 
-    synced_output = gcode_file.replace('.mpf', '_synced.csv')
-    df_synced.to_csv(synced_output, index=False)
-    print(f"Dataset disinkronisasi dan disimpan ke: {synced_output}")
+    # Cari semua file G-Code (.mpf atau .nc)
+    gcode_files = glob.glob(os.path.join(data_dir, "*.mpf")) + glob.glob(os.path.join(data_dir, "*.nc"))
+    if not gcode_files:
+        print("[ERROR] Tidak ditemukan file .mpf atau .nc di folder tersebut.")
+        sys.exit(1)
 
-    print(f"\n{'='*50}\n[TAHAP 3] Scaling, Padding & Sequence Windowing\n{'='*50}")
+    synced_dfs = []
+
+    for gcode_file in gcode_files:
+        base_name = os.path.splitext(os.path.basename(gcode_file))[0]
+        # Cari pasangan file trace (.csv)
+        trace_file = os.path.join(data_dir, f"{base_name}.csv")
+
+        if not os.path.exists(trace_file):
+            print(f"[WARNING] Melewati {base_name}: Tidak ditemukan file trace pasangannya ({trace_file})")
+            continue
+
+        print(f"\n--- Memproses Pasangan: {base_name} ---")
+
+        print("[TAHAP 1] Parsing NC & Geometri 3D...")
+        parser = NCParser()
+        df_parsed = parser.parse_file(gcode_file)
+
+        print("[TAHAP 2] Sinkronisasi Trace SinuTrain...")
+        df_trace = pd.read_csv(trace_file)
+        syncer = SinuTrainSynchronizer()
+        df_trace_clean = syncer.clean_and_attribute_trace(df_trace, df_parsed['Block_ID'].tolist())
+        df_synced = syncer.match_and_calculate_targets(df_parsed, df_trace_clean)
+
+        synced_output = gcode_file.replace('.mpf', '_synced.csv').replace('.nc', '_synced.csv')
+        df_synced.to_csv(synced_output, index=False)
+        print(f"-> Tersinkronisasi ({len(df_synced)} baris), disimpan ke: {synced_output}")
+
+        synced_dfs.append(df_synced)
+
+    if not synced_dfs:
+        print("\n[ERROR] Tidak ada satupun pasangan file yang berhasil disinkronisasi.")
+        sys.exit(1)
+
+    print(f"\n{'='*50}\n[TAHAP 3] Scaling, Padding & Sequence Windowing (Batch)\n{'='*50}")
     preprocessor = DatasetPreprocessor(window_size=201)
 
-    # Untuk contoh ini kita membagi data train dan val dari satu file secara sederhana (80/20)
-    # Di pipeline produksi, df_list biasanya terdiri dari beberapa file tersinkronisasi.
-    X_all, Y_all = preprocessor.fit_transform_dataset([df_synced])
+    # Preprocessor menerima list dataframe dari berbagai file untuk di-fit scaler dan diubah ke window 3D
+    X_all, Y_all = preprocessor.fit_transform_dataset(synced_dfs)
     preprocessor.save_scalers(scaler_path)
     print(f"Scaler parameters saved to {scaler_path}")
 
@@ -60,9 +87,8 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(dest="mode", help="Mode eksekusi: train atau infer")
 
     # Subparser untuk mode TRAINING
-    train_parser = subparsers.add_parser("train", help="Jalankan Pipeline Pelatihan End-to-End")
-    train_parser.add_argument("--gcode", type=str, required=True, help="Path ke file G-Code (.mpf)")
-    train_parser.add_argument("--trace", type=str, required=True, help="Path ke file trace SinuTrain (.csv)")
+    train_parser = subparsers.add_parser("train", help="Jalankan Pipeline Pelatihan End-to-End (Batch)")
+    train_parser.add_argument("--data-dir", type=str, required=True, help="Path folder yang berisi pasangan file .mpf dan .csv")
     train_parser.add_argument("--model-out", type=str, default="bilstm_feedrate_model.keras", help="Output model (.keras)")
     train_parser.add_argument("--scaler-out", type=str, default="scaler.pkl", help="Output scaler (.pkl)")
 
@@ -75,10 +101,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.mode == "train":
-        if not os.path.exists(args.gcode) or not os.path.exists(args.trace):
-            print("[ERROR] Pastikan file G-code dan file Trace valid/ada.")
+        if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
+            print("[ERROR] Pastikan argumen --data-dir adalah folder yang valid.")
             sys.exit(1)
-        run_training_pipeline(args.gcode, args.trace, args.model_out, args.scaler_out)
+        run_training_pipeline(args.data_dir, args.model_out, args.scaler_out)
 
     elif args.mode == "infer":
         if not os.path.exists(args.gcode):
