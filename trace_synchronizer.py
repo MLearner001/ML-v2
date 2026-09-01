@@ -21,27 +21,34 @@ class SinuTrainSynchronizer:
         df = df_trace.copy()
         
         # Standarisasi nama kolom trace SinuTrain jika diperlukan
-        # Kolom utama: actLineNumber (atau f1/s1), f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C), acVactB, acVactC
+        # Kolom utama: actLineNumber (atau f1/s1), f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C)
         if 'actLineNumber' not in df.columns and 'f1/s1' in df.columns:
             df.rename(columns={'f1/s1': 'actLineNumber'}, inplace=True)
-        if 'acVactB' not in df.columns and 'f5/s5' in df.columns: # fallback jika kecepatan diestimasi
-            pass # We strictly rely on acVactB/acVactC or calculate it if missing, but let's assume it exists or use f5/s5 diff
+
+        # Hitung diff posisi B dan C (Numerical Position Differentiation)
+        if 'f5/s5' in df.columns:
+            delta_b = df['f5/s5'].diff().abs().fillna(0)
+        else:
+            delta_b = pd.Series(0, index=df.index)
+
+        if 'f6/s6' in df.columns:
+            delta_c = df['f6/s6'].diff().abs().fillna(0)
+        else:
+            delta_c = pd.Series(0, index=df.index)
+
+        is_rotary_moving = (delta_b > 1e-4) | (delta_c > 1e-4)
 
         mapped_blocks = []
         last_valid_block = None
 
         for idx, row in df.iterrows():
             raw_line = int(row['actLineNumber'])
-            
-            # Cek apakah ada pergerakan rotasi aktif (sumbu B/C)
-            rot_velocity = 0.0
-            if 'acVactB' in row and 'acVactC' in row:
-                rot_velocity = abs(float(row['acVactB'])) + abs(float(row['acVactC']))
+            rot_moving = is_rotary_moving.iloc[idx]
 
             if raw_line > 0:
                 last_valid_block = str(raw_line)
                 mapped_blocks.append(str(raw_line))
-            elif raw_line < 0 and rot_velocity > 1e-3:
+            elif raw_line < 0 and rot_moving:
                 # Transisi CYCLE800 / Orientasi Bidang: Atribusikan ke blok aktif berikutnya / blok terakhir
                 mapped_blocks.append(f"C800_{last_valid_block}" if last_valid_block else "INIT_IDLE")
             else:
