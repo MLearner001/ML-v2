@@ -39,18 +39,34 @@ class SinuTrainSynchronizer:
         is_rotary_moving = (delta_b > 1e-4) | (delta_c > 1e-4)
 
         mapped_blocks = []
-        last_valid_block = None
+
+        # Lacak absolute state untuk sinkronisasi
+        current_absolute_id = 1
+        last_valid_n_number = -1
+        last_mapped_id = None
 
         for idx, row in df.iterrows():
             raw_line = int(row['actLineNumber'])
             rot_moving = is_rotary_moving.iloc[idx]
 
             if raw_line > 0:
-                last_valid_block = str(raw_line)
-                mapped_blocks.append(str(raw_line))
+                # Jika actLineNumber di SinuTrain secara drastis lebih kecil, berarti terjadi N99999 Reset
+                # Namun karena SinuTrain tidak mengekspos reset ini secara eksplisit kecuali dari logikanya,
+                # Kita asumsikan perubahan baris actLineNumber berkorespondensi langsung dengan
+                # pertambahan execution block di G-Code.
+
+                if raw_line != last_valid_n_number:
+                    # Baris berganti, maka increment pointer absolute ID jika itu valid
+                    if last_valid_n_number != -1:
+                        current_absolute_id += 1
+                    last_valid_n_number = raw_line
+
+                last_mapped_id = str(current_absolute_id)
+                mapped_blocks.append(str(current_absolute_id))
+
             elif raw_line < 0 and rot_moving:
-                # Transisi CYCLE800 / Orientasi Bidang: Atribusikan ke blok aktif berikutnya / blok terakhir
-                mapped_blocks.append(f"C800_{last_valid_block}" if last_valid_block else "INIT_IDLE")
+                # Transisi CYCLE800 / Orientasi Bidang: Atribusikan ke blok parent CYCLE800
+                mapped_blocks.append(f"C800_{last_mapped_id}" if last_mapped_id else "INIT_IDLE")
             else:
                 # Idle tanpa pergerakan signifikan
                 mapped_blocks.append("IDLE")
