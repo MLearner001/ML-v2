@@ -147,8 +147,9 @@ class NCParser:
     dot_prod = max(-1.0, min(1.0, dot_prod))
     return math.acos(dot_prod)
 
-  def parse_file(self, filepath: str) -> pd.DataFrame:
+  def parse_file(self, filepath: str, out_dir: Optional[str] = None) -> pd.DataFrame:
     """Membaca file .mpf/.nc dan mengembalikan DataFrame fitur baris per baris."""
+    import os
     parsed_rows = []
 
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
@@ -419,6 +420,7 @@ class NCParser:
 
 if __name__ == "__main__":
   import sys
+  import os
 
   parser = NCParser()
   # Contoh penggunaan parsing
@@ -427,7 +429,9 @@ if __name__ == "__main__":
   )
   try:
     df_result = parser.parse_file(input_file)
-    output_csv = input_file.replace(".mpf", "_parsed.csv").replace(
+
+    base_name = os.path.basename(input_file)
+    output_csv = base_name.replace(".mpf", "_parsed.csv").replace(
         ".nc", "_parsed.csv"
     )
     df_result.to_csv(output_csv, index=False)

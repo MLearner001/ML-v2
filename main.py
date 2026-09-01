@@ -16,7 +16,13 @@ from inference_pipeline import predict_nc_file
 
 import glob
 
-def run_training_pipeline(data_dir: str, output_model: str, scaler_path: str):
+def run_training_pipeline(data_dir: str, out_dir: str):
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    output_model = os.path.join(out_dir, "bilstm_feedrate_model.keras")
+    scaler_path = os.path.join(out_dir, "scaler.pkl")
+
     print(f"\n{'='*50}\n[MEMULAI BATCH TRAINING]\nMencari pasangan file G-Code (.mpf) dan Trace (.csv) di folder: {data_dir}\n{'='*50}")
 
     # Cari semua file G-Code (.mpf atau .nc)
@@ -48,7 +54,8 @@ def run_training_pipeline(data_dir: str, output_model: str, scaler_path: str):
         df_trace_clean = syncer.clean_and_attribute_trace(df_trace, df_parsed['Block_ID'].tolist())
         df_synced = syncer.match_and_calculate_targets(df_parsed, df_trace_clean)
 
-        synced_output = gcode_file.replace('.mpf', '_synced.csv').replace('.nc', '_synced.csv')
+        synced_filename = f"{base_name}_synced.csv"
+        synced_output = os.path.join(out_dir, synced_filename)
         df_synced.to_csv(synced_output, index=False)
         print(f"-> Tersinkronisasi ({len(df_synced)} baris), disimpan ke: {synced_output}")
 
@@ -76,9 +83,15 @@ def run_training_pipeline(data_dir: str, output_model: str, scaler_path: str):
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
 
-def run_inference_pipeline(gcode_file: str, model_path: str, scaler_path: str):
+def run_inference_pipeline(gcode_file: str, out_dir: str):
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    model_path = os.path.join(out_dir, "bilstm_feedrate_model.keras")
+    scaler_path = os.path.join(out_dir, "scaler.pkl")
+
     print(f"\n{'='*50}\n[TAHAP 5] Standalone Inference\n{'='*50}")
-    predict_nc_file(gcode_file, model_path=model_path, scaler_path=scaler_path)
+    predict_nc_file(gcode_file, model_path=model_path, scaler_path=scaler_path, out_dir=out_dir)
 
 
 if __name__ == "__main__":
@@ -88,15 +101,13 @@ if __name__ == "__main__":
 
     # Subparser untuk mode TRAINING
     train_parser = subparsers.add_parser("train", help="Jalankan Pipeline Pelatihan End-to-End (Batch)")
-    train_parser.add_argument("--data-dir", type=str, required=True, help="Path folder yang berisi pasangan file .mpf dan .csv")
-    train_parser.add_argument("--model-out", type=str, default="bilstm_feedrate_model.keras", help="Output model (.keras)")
-    train_parser.add_argument("--scaler-out", type=str, default="scaler.pkl", help="Output scaler (.pkl)")
+    train_parser.add_argument("--data-dir", type=str, required=True, help="Path folder data mentah (isi .mpf dan .csv)")
+    train_parser.add_argument("--out-dir", type=str, default="output", help="Path folder hasil pipeline (default: output)")
 
     # Subparser untuk mode INFERENCE
     infer_parser = subparsers.add_parser("infer", help="Jalankan Pipeline Prediksi Standalone")
     infer_parser.add_argument("--gcode", type=str, required=True, help="Path ke file G-Code (.mpf)")
-    infer_parser.add_argument("--model", type=str, default="bilstm_feedrate_model.keras", help="Path model Keras (.keras)")
-    infer_parser.add_argument("--scaler", type=str, default="scaler.pkl", help="Path scaler (.pkl)")
+    infer_parser.add_argument("--out-dir", type=str, default="output", help="Path folder berisi model/scaler dan tempat menyimpan hasil prediksi (default: output)")
 
     args = parser.parse_args()
 
@@ -104,16 +115,18 @@ if __name__ == "__main__":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
             print("[ERROR] Pastikan argumen --data-dir adalah folder yang valid.")
             sys.exit(1)
-        run_training_pipeline(args.data_dir, args.model_out, args.scaler_out)
+        run_training_pipeline(args.data_dir, args.out_dir)
 
     elif args.mode == "infer":
         if not os.path.exists(args.gcode):
             print("[ERROR] File G-code tidak ditemukan.")
             sys.exit(1)
-        if not os.path.exists(args.model) or not os.path.exists(args.scaler):
-            print(f"[ERROR] Model ({args.model}) atau Scaler ({args.scaler}) tidak ditemukan. Lakukan train terlebih dahulu.")
+        model_path = os.path.join(args.out_dir, "bilstm_feedrate_model.keras")
+        scaler_path = os.path.join(args.out_dir, "scaler.pkl")
+        if not os.path.exists(model_path) or not os.path.exists(scaler_path):
+            print(f"[ERROR] Model atau Scaler tidak ditemukan di {args.out_dir}. Lakukan train terlebih dahulu.")
             sys.exit(1)
-        run_inference_pipeline(args.gcode, args.model, args.scaler)
+        run_inference_pipeline(args.gcode, args.out_dir)
 
     else:
         parser.print_help()

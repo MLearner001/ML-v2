@@ -11,11 +11,17 @@ from batch_gcode_parser import NCParser
 from dataset_preprocessor import DatasetPreprocessor
 from typing import Dict
 
+import os
+
 def predict_nc_file(mpf_filepath: str, 
                      model_path: str = "bilstm_feedrate_model.keras", 
-                     scaler_path: str = "scaler.pkl") -> Dict[str, float]:
+                     scaler_path: str = "scaler.pkl",
+                     out_dir: str = ".") -> Dict[str, float]:
     """Memproses file .mpf baru dan menghitung estimasi waktu pemesinan total."""
     
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
     print(f"[INFO] 1. Mem-parsing file NC: {mpf_filepath}")
     parser = NCParser()
     df_parsed = parser.parse_file(mpf_filepath)
@@ -55,7 +61,9 @@ def predict_nc_file(mpf_filepath: str,
     total_time_min = total_time_sec / 60.0
     
     # Simpan hasil analisis profil feedrate ke CSV
-    output_csv = mpf_filepath.replace(".mpf", "_predicted_profile.csv").replace(".nc", "_predicted_profile.csv")
+    base_name = os.path.basename(mpf_filepath)
+    output_filename = base_name.replace(".mpf", "_predicted_profile.csv").replace(".nc", "_predicted_profile.csv")
+    output_csv = os.path.join(out_dir, output_filename)
     df_parsed.to_csv(output_csv, index=False)
     
     print("\n" + "="*50)
