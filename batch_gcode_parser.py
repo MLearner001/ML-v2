@@ -33,6 +33,7 @@ class MachineState:
 
   # Modal Motions
   motion_mode: str = "G01"  # G00, G01, G02, G03
+  is_absolute: bool = True  # G90 (Absolute) = True, G91 (Incremental) = False
   is_traori: int = 0
 
   # Modal Cycles
@@ -113,9 +114,8 @@ class NCParser:
         match = re.search(r"CYCLE\d+\s*\(([^)]+)\)", clean_line)
         if match:
           args = [
-              float(arg.strip())
+              float(arg.strip()) if arg.strip() else 0.0
               for arg in match.group(1).split(",")
-              if arg.strip()
           ]
           # Standard Siemens: RTP (Return), RFP (Reference), SDIS (Safety), DP (Final Depth)
           if len(args) >= 4:
@@ -187,6 +187,11 @@ class NCParser:
       elif re.search(r"\bG0*3\b", line, re.IGNORECASE):
         self.state.motion_mode = "G03"
 
+      if re.search(r"\bG90\b", line, re.IGNORECASE):
+        self.state.is_absolute = True
+      elif re.search(r"\bG91\b", line, re.IGNORECASE):
+        self.state.is_absolute = False
+
       # 4. Commanded Feedrate & Spindle
       f_match = re.search(r"\bF\s*=\s*([^\s,]+)|\bF([0-9\.]+)", line)
       if f_match:
@@ -208,41 +213,18 @@ class NCParser:
       b3_match = re.search(r"\bB3\s*=\s*([-\d\.]+)", line)
       c3_match = re.search(r"\bC3\s*=\s*([-\d\.]+)", line)
 
-      tgt_x = (
-          self._evaluate_r_param(
-              x_match.group(1) if x_match.group(1) else x_match.group(2)
-          )
-          if x_match
-          else self.state.x
-      )
-      tgt_y = (
-          self._evaluate_r_param(
-              y_match.group(1) if y_match.group(1) else y_match.group(2)
-          )
-          if y_match
-          else self.state.y
-      )
-      tgt_z = (
-          self._evaluate_r_param(
-              z_match.group(1) if z_match.group(1) else z_match.group(2)
-          )
-          if z_match
-          else self.state.z
-      )
-      tgt_b = (
-          self._evaluate_r_param(
-              b_match.group(1) if b_match.group(1) else b_match.group(2)
-          )
-          if b_match
-          else self.state.b
-      )
-      tgt_c = (
-          self._evaluate_r_param(
-              c_match.group(1) if c_match.group(1) else c_match.group(2)
-          )
-          if c_match
-          else self.state.c
-      )
+      def get_target(match, current_val):
+          if match:
+              val = self._evaluate_r_param(match.group(1) if match.group(1) else match.group(2))
+              return val if self.state.is_absolute else current_val + val
+          return current_val
+
+      tgt_x = get_target(x_match, self.state.x)
+      tgt_y = get_target(y_match, self.state.y)
+      tgt_z = get_target(z_match, self.state.z)
+      tgt_b = get_target(b_match, self.state.b)
+      tgt_c = get_target(c_match, self.state.c)
+
       tgt_a3 = float(a3_match.group(1)) if a3_match else self.state.a3
       tgt_b3 = float(b3_match.group(1)) if b3_match else self.state.b3
       tgt_c3 = float(c3_match.group(1)) if c3_match else self.state.c3

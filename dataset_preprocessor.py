@@ -59,14 +59,48 @@ class DatasetPreprocessor:
         # Standarisasi fitur
         scaled_features = self.feature_scaler.transform(df_prep[self.feature_cols])
         
+        # Kolom boolean/biner tidak boleh di-scale, maka kita override nilainya kembali
+        # untuk memastikan flag biner murni 0 dan 1
+        binary_cols = ['Is_G01', 'Is_G02', 'Is_G03', 'Is_Traori', 'Is_Cycle800',
+                       'Is_MCALL_Sub', 'Is_Motion_Block', 'Is_Reversal_X',
+                       'Is_Reversal_Y', 'Is_Reversal_Z']
+
+        for col in binary_cols:
+            if col in self.feature_cols:
+                idx = self.feature_cols.index(col)
+                scaled_features[:, idx] = df_prep[col].values
+
         # Terapkan Standstill Edge Padding (100 di awal, 100 di akhir)
-        first_row = scaled_features[0:1, :]
-        last_row = scaled_features[-1:, :]
+        # Kondisi diam: kecepatan=0, delta=0
+        # Kita set pada data awal sebelum scaling
+        standstill_df = df_prep.iloc[[0]].copy()
         
+        if 'Cmd_F' in standstill_df.columns:
+            standstill_df['Cmd_F'] = 0.0
+        if 'Delta_3D' in standstill_df.columns:
+            standstill_df['Delta_3D'] = 0.0
+        if 'Delta_Rot' in standstill_df.columns:
+            standstill_df['Delta_Rot'] = 0.0
+        if 'Target_Feedrate' in standstill_df.columns:
+            standstill_df['Target_Feedrate'] = 0.0
+
+        # Transform baris standstill ini
+        scaled_standstill = self.feature_scaler.transform(standstill_df[self.feature_cols])
+
+        # Override nilai biner untuk standstill
+        for col in binary_cols:
+            if col in self.feature_cols:
+                idx = self.feature_cols.index(col)
+                # Secara bawaan, pada kondisi standstill kita matikan sinyal flag pergerakan (Is_Motion_Block=0)
+                if col in ['Is_Motion_Block', 'Is_G01', 'Is_G02', 'Is_G03']:
+                    scaled_standstill[0, idx] = 0
+                else:
+                    scaled_standstill[0, idx] = standstill_df[col].values[0]
+
         padded_features = np.vstack([
-            np.repeat(first_row, self.half_w, axis=0),
+            np.repeat(scaled_standstill, self.half_w, axis=0),
             scaled_features,
-            np.repeat(last_row, self.half_w, axis=0)
+            np.repeat(scaled_standstill, self.half_w, axis=0)
         ])
         
         # Bentuk Jendela Sekuens W=201

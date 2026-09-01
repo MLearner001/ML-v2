@@ -6,6 +6,7 @@ Tahap 4: Pelatihan Model Dual-Layer Bi-LSTM untuk Prediksi Profil Kecepatan CNC.
 import tensorflow as tf
 from tensorflow.keras import layers, models, callbacks, optimizers
 import numpy as np
+from typing import Tuple
 
 def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
     """Membangun arsitektur Dual-Layer Bi-LSTM."""
@@ -27,6 +28,7 @@ def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
     model = models.Model(inputs=inputs, outputs=outputs, name="CNC_Kinematics_BiLSTM")
     
     # Optimizer AdamW dengan Huber Loss
+    # We must use tf.keras.optimizers.AdamW in recent Keras / TF versions
     optimizer = optimizers.AdamW(learning_rate=1e-3, weight_decay=1e-4)
     model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", "mse"])
     
