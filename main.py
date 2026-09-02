@@ -49,7 +49,23 @@ def run_training_pipeline(data_dir: str, out_dir: str):
         df_parsed = parser.parse_file(gcode_file)
 
         print("[TAHAP 2] Sinkronisasi Trace SinuTrain...")
-        df_trace = pd.read_csv(trace_file)
+
+        # Deteksi Header & Separator secara otomatis untuk Trace SinuTrain
+        # karena sering mengandung metadata di atas dan menggunakan titik koma (;)
+        header_idx = 0
+        detected_sep = ','
+        with open(trace_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for i, line in enumerate(f):
+                if 'actLineNumber' in line or 'f1/s1' in line:
+                    header_idx = i
+                    if ';' in line:
+                        detected_sep = ';'
+                    break
+
+        df_trace = pd.read_csv(trace_file, skiprows=header_idx, sep=detected_sep, low_memory=False)
+        # Bersihkan spasi whitespace di nama kolom
+        df_trace.columns = df_trace.columns.str.strip()
+
         syncer = SinuTrainSynchronizer()
         df_trace_clean = syncer.clean_and_attribute_trace(df_trace, df_parsed['Block_ID'].tolist())
         df_synced = syncer.match_and_calculate_targets(df_parsed, df_trace_clean)
