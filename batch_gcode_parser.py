@@ -155,6 +155,9 @@ class NCParser:
     with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
       lines = f.readlines()
 
+    # Absolute sequential execution index to avoid N99999 reset issues
+    absolute_idx = 1
+
     for raw_line in lines:
       line = raw_line.strip()
       # Hapus komentar (ditandai dengan semicolon ;)
@@ -165,7 +168,11 @@ class NCParser:
 
       # 1. Ekstraksi Block ID (Nomor Baris N)
       block_match = re.search(r"^N(\d+)", line, re.IGNORECASE)
-      block_id = int(block_match.group(1)) if block_match else len(parsed_rows)
+      n_number = int(block_match.group(1)) if block_match else None
+
+      block_id = str(absolute_idx)
+
+      # Kita simpan N number untuk referensi, tapi index absolut yang jadi Block_ID
 
       # 2. Parsing Modal & R-Assignments
       self._parse_r_assignments(line)
@@ -285,6 +292,7 @@ class NCParser:
 
           parsed_rows.append({
               "Block_ID": sub_id,
+              "N_Number": n_number if n_number else -1,
               "Cmd_F": f_val,
               "Cmd_S": self.state.cmd_s,
               "Is_G01": 1 if mode == "G01" else 0,
@@ -371,6 +379,7 @@ class NCParser:
 
       parsed_rows.append({
           "Block_ID": str(block_id),
+          "N_Number": n_number if n_number else -1,
           "Cmd_F": self.state.cmd_f,
           "Cmd_S": self.state.cmd_s,
           "Is_G01": 1 if self.state.motion_mode == "G01" else 0,
@@ -414,6 +423,8 @@ class NCParser:
             dy,
             dz,
         )
+
+      absolute_idx += 1
 
     return pd.DataFrame(parsed_rows)
 
