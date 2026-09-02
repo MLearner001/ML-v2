@@ -82,14 +82,32 @@ class NCParser:
       self.state.r_params[int(idx)] = float(val)
 
   def _parse_cycle832(self, line: str):
-    """Mengekstrak toleransi dan mode dari CYCLE832(0.005, 3, 1)."""
+    """Mengekstrak toleransi dan mode dari CYCLE832(0.005, 3, 1) atau makro string."""
     match = re.search(r"CYCLE832\s*\(([^)]+)\)", line, re.IGNORECASE)
     if match:
       args = [a.strip() for a in match.group(1).split(",")]
       if len(args) >= 1 and args[0]:
-        self.state.c832_tol = float(args[0])
+        try:
+          self.state.c832_tol = float(args[0])
+        except ValueError:
+          pass
+
       if len(args) >= 2 and args[1]:
-        self.state.c832_mode = int(float(args[1]))
+        mode_str = args[1].upper()
+        try:
+          self.state.c832_mode = int(float(mode_str))
+        except ValueError:
+          # Mapping makro Siemens umum ke integer
+          if "_OFF" in mode_str:
+            self.state.c832_mode = 0
+          elif "_ROUGH" in mode_str:
+            self.state.c832_mode = 1
+          elif "_SEMIFIN" in mode_str:
+            self.state.c832_mode = 2
+          elif "_FINISH" in mode_str:
+            self.state.c832_mode = 3
+          else:
+            self.state.c832_mode = 0
 
   def _parse_cycle800(self, line: str):
     """Mengekstrak parameter rotasi orientasi bidang CYCLE800."""
