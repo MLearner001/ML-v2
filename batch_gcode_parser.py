@@ -1,6 +1,7 @@
 """batch_gcode_parser.py
 
 Tahap 1: Parsing File NC (.mpf / .nc) dan Ekstraksi Fitur Kinematika 3D.
+(Updated: V2 dengan Physics-Informed MAX_RAPID Limit)
 """
 
 from dataclasses import dataclass, field
@@ -60,6 +61,7 @@ class NCParser:
 
   def __init__(self):
     self.state = MachineState()
+    self.MAX_RAPID = 20000.0  # [V2 UPDATE] Limit aktual untuk G00
 
   def _evaluate_r_param(self, val_str: str) -> float:
     """Mengevaluasi nilai numerik atau variabel R-parameter (misal: R1, R10)."""
@@ -308,10 +310,13 @@ class NCParser:
               (dx, dy, dz),
           )
 
+          # [V2 UPDATE] Set MAX_RAPID untuk G00 di dalam sub-gerakan
+          effective_f = self.MAX_RAPID if mode == "G00" else f_val
+
           parsed_rows.append({
               "Block_ID": sub_id,
               "N_Number": n_number if n_number else -1,
-              "Cmd_F": f_val,
+              "Cmd_F": effective_f,
               "Cmd_S": self.state.cmd_s,
               "Is_G01": 1 if mode == "G01" else 0,
               "Is_G02": 0,
@@ -395,10 +400,13 @@ class NCParser:
           1 if (delta_3d > 1e-4 or delta_rot > 1e-4 or tool_vec_delta > 1e-4) else 0
       )
 
+      # [V2 UPDATE] Set limit untuk G00 vs G01
+      effective_limit_f = self.MAX_RAPID if self.state.motion_mode == "G00" else self.state.cmd_f
+
       parsed_rows.append({
           "Block_ID": str(block_id),
           "N_Number": n_number if n_number else -1,
-          "Cmd_F": self.state.cmd_f,
+          "Cmd_F": effective_limit_f,
           "Cmd_S": self.state.cmd_s,
           "Is_G01": 1 if self.state.motion_mode == "G01" else 0,
           "Is_G02": 1 if self.state.motion_mode == "G02" else 0,
