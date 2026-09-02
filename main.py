@@ -54,15 +54,23 @@ def run_training_pipeline(data_dir: str, out_dir: str):
         # karena sering mengandung metadata di atas dan menggunakan titik koma (;)
         header_idx = 0
         detected_sep = ','
+
         with open(trace_file, 'r', encoding='utf-8', errors='ignore') as f:
             for i, line in enumerate(f):
-                if 'actLineNumber' in line or 'f1/s1' in line:
+                # Cari baris yang kemungkinan merupakan header,
+                # mengandung f1, s1, atau kata actLineNumber
+                if any(k in line for k in ['actLineNumber', 'f1/s1', 'f1', 's1', 'f2', 's2']):
                     header_idx = i
                     if ';' in line:
                         detected_sep = ';'
                     break
 
-        df_trace = pd.read_csv(trace_file, skiprows=header_idx, sep=detected_sep, low_memory=False)
+        # Membaca trace SinuTrain menggunakan skip-rows dan error_bad_lines/on_bad_lines dinonaktifkan
+        try:
+            df_trace = pd.read_csv(trace_file, skiprows=header_idx, sep=detected_sep, low_memory=False, on_bad_lines='skip')
+        except TypeError:
+            # Fallback untuk versi pandas lama
+            df_trace = pd.read_csv(trace_file, skiprows=header_idx, sep=detected_sep, low_memory=False, error_bad_lines=False)
         # Bersihkan spasi whitespace di nama kolom
         df_trace.columns = df_trace.columns.str.strip()
 
