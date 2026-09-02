@@ -118,6 +118,21 @@ class DatasetPreprocessor:
             
         return X_windows
 
+    def save_scalers(self, path: str = "scaler.pkl"):
+        with open(path, "wb") as f:
+            pickle.dump({
+                "feature_scaler": self.feature_scaler,
+                "target_scaler": self.target_scaler,
+                "feature_cols": self.feature_cols
+            }, f)
+
+    def load_scalers(self, path: str = "scaler.pkl"):
+        with open(path, "rb") as f:
+            data = pickle.load(f)
+            self.feature_scaler = data["feature_scaler"]
+            self.target_scaler = data["target_scaler"]
+            self.feature_cols = data["feature_cols"]
+
 class SlidingWindowGenerator(tf.keras.utils.Sequence):
     """Generator Data Keras untuk menghemat RAM secara drastis dengan membuat jendela 3D on-the-fly."""
     def __init__(self, df_list: List[pd.DataFrame], preprocessor: DatasetPreprocessor, batch_size: int = 128):
@@ -164,18 +179,3 @@ class SlidingWindowGenerator(tf.keras.utils.Sequence):
             batch_y.append(self.Y_list[file_idx][row_idx])
 
         return np.array(batch_x, dtype=np.float32), np.array(batch_y, dtype=np.float32)
-
-    def save_scalers(self, path: str = "scaler.pkl"):
-        with open(path, "wb") as f:
-            pickle.dump({
-                "feature_scaler": self.feature_scaler,
-                "target_scaler": self.target_scaler,
-                "feature_cols": self.feature_cols
-            }, f)
-
-    def load_scalers(self, path: str = "scaler.pkl"):
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-            self.feature_scaler = data["feature_scaler"]
-            self.target_scaler = data["target_scaler"]
-            self.feature_cols = data["feature_cols"]
