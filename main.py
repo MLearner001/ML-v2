@@ -35,14 +35,25 @@ def run_training_pipeline(data_dir: str, out_dir: str):
 
     for gcode_file in gcode_files:
         base_name = os.path.splitext(os.path.basename(gcode_file))[0]
-        # Cari pasangan file trace (.csv)
+
+        synced_filename = f"{base_name}_synced.csv"
+        synced_output = os.path.join(out_dir, synced_filename)
+
+        print(f"\n--- Memproses Pasangan: {base_name} ---")
+
+        # JIKA SUDAH PERNAH DI-SINKRONISASI (Resume dari Tahap 3)
+        if os.path.exists(synced_output):
+            print(f"[TAHAP 1 & 2 SKIPPED] Memuat langsung file sinkronisasi dari: {synced_output}")
+            df_synced = pd.read_csv(synced_output, low_memory=False)
+            synced_dfs.append(df_synced)
+            continue
+
+        # Cari pasangan file trace (.csv) jika belum ada cache
         trace_file = os.path.join(data_dir, f"{base_name}.csv")
 
         if not os.path.exists(trace_file):
             print(f"[WARNING] Melewati {base_name}: Tidak ditemukan file trace pasangannya ({trace_file})")
             continue
-
-        print(f"\n--- Memproses Pasangan: {base_name} ---")
 
         print("[TAHAP 1] Parsing NC & Geometri 3D...")
         parser = NCParser()
