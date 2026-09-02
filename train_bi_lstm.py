@@ -34,11 +34,15 @@ def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
     
     return model
 
-def run_training(X_train: np.ndarray, Y_train: np.ndarray, 
-                 X_val: np.ndarray, Y_val: np.ndarray, 
+def run_training(train_data, val_data,
+                 input_shape: Tuple[int, int],
                  model_save_path: str = "bilstm_feedrate_model.keras"):
-    
-    model = build_bilstm_model(input_shape=(X_train.shape[1], X_train.shape[2]))
+    """
+    Menjalankan pelatihan.
+    train_data dan val_data bisa berupa tuple (X, Y) untuk mode numpy biasa,
+    atau berupa tf.keras.utils.Sequence / generator untuk mode low-RAM.
+    """
+    model = build_bilstm_model(input_shape=input_shape)
     model.summary()
     
     training_callbacks = [
@@ -47,13 +51,26 @@ def run_training(X_train: np.ndarray, Y_train: np.ndarray,
         callbacks.EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True, verbose=1)
     ]
     
-    history = model.fit(
-        X_train, Y_train,
-        validation_data=(X_val, Y_val),
-        epochs=100,
-        batch_size=128,  # Sesuai keputusan spesifikasi
-        callbacks=training_callbacks,
-        verbose=1
-    )
-    
+    if isinstance(train_data, tuple):
+        # Mode High RAM (numpy arrays)
+        X_train, Y_train = train_data
+        X_val, Y_val = val_data
+        history = model.fit(
+            X_train, Y_train,
+            validation_data=(X_val, Y_val),
+            epochs=100,
+            batch_size=128,
+            callbacks=training_callbacks,
+            verbose=1
+        )
+    else:
+        # Mode Low RAM (generator)
+        history = model.fit(
+            x=train_data,
+            validation_data=val_data,
+            epochs=100,
+            callbacks=training_callbacks,
+            verbose=1
+        )
+
     return model, history
