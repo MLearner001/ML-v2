@@ -10,13 +10,13 @@ import sys
 import pandas as pd
 from batch_gcode_parser import NCParser
 from trace_synchronizer import SinuTrainSynchronizer
-from dataset_preprocessor import DatasetPreprocessor
+from dataset_preprocessor import DatasetPreprocessor, SlidingWindowGenerator
 from train_bi_lstm import run_training
 from inference_pipeline import predict_nc_file
 
 import glob
 
-def run_training_pipeline(data_dir: str, out_dir: str):
+def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -105,18 +105,53 @@ def run_training_pipeline(data_dir: str, out_dir: str):
     print(f"\n{'='*50}\n[TAHAP 3] Scaling, Padding & Sequence Windowing (Batch)\n{'='*50}")
     preprocessor = DatasetPreprocessor(window_size=201)
 
-    # Preprocessor menerima list dataframe dari berbagai file untuk di-fit scaler dan diubah ke window 3D
-    X_all, Y_all = preprocessor.fit_transform_dataset(synced_dfs)
-    preprocessor.save_scalers(scaler_path)
-    print(f"Scaler parameters saved to {scaler_path}")
+    split_idx = int(0.8 * len(synced_dfs))
+    if split_idx == 0 and len(synced_dfs) > 0:
+        split_idx = 1 # Pastikan minimal ada 1 data training
 
-    split_idx = int(0.8 * len(X_all))
-    X_train, Y_train = X_all[:split_idx], Y_all[:split_idx]
-    X_val, Y_val = X_all[split_idx:], Y_all[split_idx:]
-    print(f"Train Shape: {X_train.shape}, Val Shape: {X_val.shape}")
+    train_dfs = synced_dfs[:split_idx]
+    val_dfs = synced_dfs[split_idx:]
 
-    print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
-    model, history = run_training(X_train, Y_train, X_val, Y_val, model_save_path=output_model)
+    print(f"Menggunakan {len(train_dfs)} file untuk Training, {len(val_dfs)} file untuk Validasi.")
+
+    if mem_mode == "high":
+        print("[INFO] Menggunakan Mode HIGH RAM (Numpy Arrays 3D di Memori).")
+        # Preprocessor menerima list dataframe dari berbagai file untuk di-fit scaler dan diubah ke window 3D
+        X_train, Y_train = preprocessor.fit_transform_dataset(train_dfs)
+        X_val, Y_val = [], []
+        if val_dfs:
+            X_val, Y_val = preprocessor.fit_transform_dataset(val_dfs) # Should strictly just transform, but we use generator locally or separate the method
+            # Perbaikan: fit_transform_dataset akan mengubah scaler, kita harus memastikan validasi tidak mem-fit
+            X_val_list, Y_val_list = [], []
+            for df in val_dfs:
+                x_p, y_p = preprocessor.transform_file(df, is_training=True)
+                X_val_list.append(x_p)
+                Y_val_list.append(y_p)
+            if X_val_list:
+                X_val = np.concatenate(X_val_list, axis=0)
+                Y_val = np.concatenate(Y_val_list, axis=0)
+
+        preprocessor.save_scalers(scaler_path)
+        print(f"Scaler parameters saved to {scaler_path}")
+        print(f"Train Shape: {X_train.shape}, Val Shape: {X_val.shape if len(X_val) > 0 else 'N/A'}")
+
+        print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
+        input_shape = (X_train.shape[1], X_train.shape[2])
+        model, history = run_training((X_train, Y_train), (X_val, Y_val) if len(X_val) > 0 else None,
+                                      input_shape=input_shape, model_save_path=output_model)
+    else:
+        print("[INFO] Menggunakan Mode LOW RAM (On-the-fly Generator). Sangat hemat memori!")
+        preprocessor.fit_scalers_only(train_dfs)
+        preprocessor.save_scalers(scaler_path)
+
+        train_gen = SlidingWindowGenerator(train_dfs, preprocessor, batch_size=128)
+        val_gen = SlidingWindowGenerator(val_dfs, preprocessor, batch_size=128) if val_dfs else None
+
+        input_shape = (preprocessor.window_size, len(preprocessor.feature_cols))
+
+        print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
+        model, history = run_training(train_gen, val_gen, input_shape=input_shape, model_save_path=output_model)
+
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
 
@@ -153,6 +188,7 @@ if __name__ == "__main__":
     train_parser = subparsers.add_parser("train", help="Jalankan Pipeline Pelatihan End-to-End (Batch)")
     train_parser.add_argument("--data-dir", type=str, required=True, help="Path folder data mentah (isi .mpf dan .csv)")
     train_parser.add_argument("--out-dir", type=str, default="output", help="Path folder hasil pipeline (default: output)")
+    train_parser.add_argument("--mem-mode", type=str, choices=["high", "low"], default="high", help="Pilih 'high' untuk RAM besar (cepat) atau 'low' untuk RAM kecil (hemat memory).")
 
     # Subparser untuk mode INFERENCE
     infer_parser = subparsers.add_parser("infer", help="Jalankan Pipeline Prediksi Standalone (Batch)")
@@ -165,7 +201,7 @@ if __name__ == "__main__":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
             print("[ERROR] Pastikan argumen --data-dir adalah folder yang valid.")
             sys.exit(1)
-        run_training_pipeline(args.data_dir, args.out_dir)
+        run_training_pipeline(args.data_dir, args.out_dir, args.mem_mode)
 
     elif args.mode == "infer":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
