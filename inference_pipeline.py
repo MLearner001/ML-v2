@@ -1,6 +1,7 @@
 """
 inference_pipeline.py
 Tahap 5: Eksekusi Inferensi Standalone pada File Program NC Baru (.mpf).
+(Updated: V2 dengan Physics-Informed Hard-Clipping)
 """
 
 import sys
@@ -39,6 +40,15 @@ def predict_nc_file(mpf_filepath: str,
     # 4. Inverse Transform untuk Mendapatkan Feedrate Aktual (mm/min)
     y_pred_log = preprocessor.target_scaler.inverse_transform(y_pred_scaled)
     predicted_feedrate = np.expm1(y_pred_log).flatten()
+
+    # --- [V2 UPDATE] PHYSICS-INFORMED HARD CLIPPING ---
+    # Ambil batas maksimal dari kolom Cmd_F (sudah mengandung limit 20000 untuk G00)
+    limit_f = df_parsed['Cmd_F'].values
+
+    # Pangkas prediksi agar secara matematis mematuhi hukum fisika CNC
+    predicted_feedrate = np.minimum(predicted_feedrate, limit_f)
+    # --------------------------------------------------
+
     # Pastikan tidak ada nilai di bawah batas minimum (1.0 mm/min)
     predicted_feedrate = np.maximum(1.0, predicted_feedrate)
     
@@ -67,7 +77,7 @@ def predict_nc_file(mpf_filepath: str,
     df_parsed.to_csv(output_csv, index=False)
     
     print("\n" + "="*50)
-    print("HASIL PREDIKSI MACHINING TIME (DIGITAL TWIN BI-LSTM)")
+    print("HASIL PREDIKSI MACHINING TIME (DIGITAL TWIN BI-LSTM V2)")
     print("="*50)
     print(f"Total Blok Program     : {len(df_parsed)} baris")
     print(f"Total Estimasi Waktu   : {total_time_sec:.2f} detik ({total_time_min:.2f} menit)")
