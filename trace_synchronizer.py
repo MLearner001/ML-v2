@@ -34,14 +34,18 @@ class SinuTrainSynchronizer:
             return None
 
         # Temukan kolom actLineNumber
-        col_line = find_column_by_substrings(['actLineNumber', 'f1/s1', 'f1', 's1'])
+        col_line = find_column_by_substrings(['actLineNumber', 'f1\\s1', 'f1/s1'])
         if not col_line:
-            raise KeyError(f"Kolom Line Number tidak ditemukan di file trace! Kolom yang tersedia: {list(df.columns)}")
+            # Fallback agresif
+            col_line = find_column_by_substrings(['f1', 's1'])
+            if not col_line:
+                raise KeyError(f"Kolom Line Number tidak ditemukan di file trace! Kolom yang tersedia: {list(df.columns)}")
         df.rename(columns={col_line: 'actLineNumber'}, inplace=True)
 
         # Temukan kolom f5/s5 (B) dan f6/s6 (C)
-        col_b = find_column_by_substrings(['f5/s5', 'f5', 's5', 'actToolBasePos[3]']) # Indeks rotasi seringkali 3 atau spesifik
-        col_c = find_column_by_substrings(['f6/s6', 'f6', 's6', 'actToolBasePos[4]'])
+        # Pada file Siemens .csv raw sering digunakan backslash
+        col_b = find_column_by_substrings(['f5\\s5', 'f5/s5', 'f5', 'actToolBasePos[3]'])
+        col_c = find_column_by_substrings(['f6\\s6', 'f6/s6', 'f6', 'actToolBasePos[4]'])
 
         # Hitung diff posisi B dan C (Numerical Position Differentiation)
         if col_b and col_b in df.columns:
