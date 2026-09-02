@@ -24,21 +24,33 @@ class SinuTrainSynchronizer:
         # Bersihkan spasi kosong di kolom jika belum
         df.columns = df.columns.str.strip()
 
-        # Kolom utama: actLineNumber (atau f1/s1), f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C)
-        if 'actLineNumber' not in df.columns and 'f1/s1' in df.columns:
-            df.rename(columns={'f1/s1': 'actLineNumber'}, inplace=True)
+        # Kolom utama: actLineNumber, f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C)
+        # Pada beberapa export, nama kolom mengandung path panjang seperti '/Channel/!SPARP/actLineNumber [u1  1]'
 
-        if 'actLineNumber' not in df.columns:
-            raise KeyError(f"Kolom actLineNumber atau f1/s1 tidak ditemukan di file trace! Kolom yang tersedia: {list(df.columns)}")
+        def find_column_by_substrings(substrings: List[str]) -> str:
+            for col in df.columns:
+                if any(sub in col for sub in substrings):
+                    return col
+            return None
+
+        # Temukan kolom actLineNumber
+        col_line = find_column_by_substrings(['actLineNumber', 'f1/s1', 'f1', 's1'])
+        if not col_line:
+            raise KeyError(f"Kolom Line Number tidak ditemukan di file trace! Kolom yang tersedia: {list(df.columns)}")
+        df.rename(columns={col_line: 'actLineNumber'}, inplace=True)
+
+        # Temukan kolom f5/s5 (B) dan f6/s6 (C)
+        col_b = find_column_by_substrings(['f5/s5', 'f5', 's5', 'actToolBasePos[3]']) # Indeks rotasi seringkali 3 atau spesifik
+        col_c = find_column_by_substrings(['f6/s6', 'f6', 's6', 'actToolBasePos[4]'])
 
         # Hitung diff posisi B dan C (Numerical Position Differentiation)
-        if 'f5/s5' in df.columns:
-            delta_b = pd.to_numeric(df['f5/s5'], errors='coerce').diff().abs().fillna(0)
+        if col_b and col_b in df.columns:
+            delta_b = pd.to_numeric(df[col_b], errors='coerce').diff().abs().fillna(0)
         else:
             delta_b = pd.Series(0, index=df.index)
 
-        if 'f6/s6' in df.columns:
-            delta_c = pd.to_numeric(df['f6/s6'], errors='coerce').diff().abs().fillna(0)
+        if col_c and col_c in df.columns:
+            delta_c = pd.to_numeric(df[col_c], errors='coerce').diff().abs().fillna(0)
         else:
             delta_c = pd.Series(0, index=df.index)
 
