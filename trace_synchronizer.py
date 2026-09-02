@@ -21,18 +21,24 @@ class SinuTrainSynchronizer:
         df = df_trace.copy()
         
         # Standarisasi nama kolom trace SinuTrain jika diperlukan
+        # Bersihkan spasi kosong di kolom jika belum
+        df.columns = df.columns.str.strip()
+
         # Kolom utama: actLineNumber (atau f1/s1), f2/s2 (X), f3/s3 (Y), f4/s4 (Z), f5/s5 (B), f6/s6 (C)
         if 'actLineNumber' not in df.columns and 'f1/s1' in df.columns:
             df.rename(columns={'f1/s1': 'actLineNumber'}, inplace=True)
 
+        if 'actLineNumber' not in df.columns:
+            raise KeyError(f"Kolom actLineNumber atau f1/s1 tidak ditemukan di file trace! Kolom yang tersedia: {list(df.columns)}")
+
         # Hitung diff posisi B dan C (Numerical Position Differentiation)
         if 'f5/s5' in df.columns:
-            delta_b = df['f5/s5'].diff().abs().fillna(0)
+            delta_b = pd.to_numeric(df['f5/s5'], errors='coerce').diff().abs().fillna(0)
         else:
             delta_b = pd.Series(0, index=df.index)
 
         if 'f6/s6' in df.columns:
-            delta_c = df['f6/s6'].diff().abs().fillna(0)
+            delta_c = pd.to_numeric(df['f6/s6'], errors='coerce').diff().abs().fillna(0)
         else:
             delta_c = pd.Series(0, index=df.index)
 
@@ -46,7 +52,13 @@ class SinuTrainSynchronizer:
         last_mapped_id = None
 
         for idx, row in df.iterrows():
-            raw_line = int(row['actLineNumber'])
+            try:
+                # Handle possible NaN / empty string lines
+                raw_line = int(float(row['actLineNumber']))
+            except (ValueError, TypeError):
+                mapped_blocks.append("IDLE")
+                continue
+
             rot_moving = is_rotary_moving.iloc[idx]
 
             if raw_line > 0:
