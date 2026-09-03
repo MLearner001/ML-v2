@@ -45,9 +45,10 @@ class DatasetPreprocessor:
         self.feature_scaler.fit(combined_df[self.feature_cols])
         self.target_scaler.fit(combined_df[['Target_Feedrate']])
 
-    def fit_transform_dataset(self, df_list: List[pd.DataFrame]) -> Tuple[np.ndarray, np.ndarray]:
+    def fit_transform_dataset(self, df_list: List[pd.DataFrame], is_resume: bool = False) -> Tuple[np.ndarray, np.ndarray]:
         """Fit scaler pada kumpulan data training dan kembalikan tensor (X, Y). (Mode High-RAM)"""
-        self.fit_scalers_only(df_list)
+        if not is_resume:
+            self.fit_scalers_only(df_list)
         
         X_all, Y_all = [], []
         for df in df_list:

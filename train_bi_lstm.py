@@ -39,13 +39,21 @@ import os
 def run_training(train_data, val_data,
                  input_shape: Tuple[int, int],
                  model_save_path: str = "bilstm_feedrate_model.keras",
-                 checkpoint_dir: str = None):
+                 checkpoint_dir: str = None,
+                 resume_model_path: str = None):
     """
     Menjalankan pelatihan.
     train_data dan val_data bisa berupa tuple (X, Y) untuk mode numpy biasa,
     atau berupa tf.keras.utils.Sequence / generator untuk mode low-RAM.
+    Jika resume_model_path diberikan, maka lanjutkan pelatihan dari model tersebut.
     """
-    model = build_bilstm_model(input_shape=input_shape)
+    if resume_model_path and os.path.exists(resume_model_path):
+        print(f"[INFO] Meresume (Transfer Learning) dari model: {resume_model_path}")
+        # Memuat model komplit dengan arsitektur, optimizer, loss, dan states
+        model = tf.keras.models.load_model(resume_model_path, compile=True)
+    else:
+        model = build_bilstm_model(input_shape=input_shape)
+
     model.summary()
     
     training_callbacks = [
