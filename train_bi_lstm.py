@@ -34,9 +34,12 @@ def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
     
     return model
 
+import os
+
 def run_training(train_data, val_data,
                  input_shape: Tuple[int, int],
-                 model_save_path: str = "bilstm_feedrate_model.keras"):
+                 model_save_path: str = "bilstm_feedrate_model.keras",
+                 checkpoint_dir: str = None):
     """
     Menjalankan pelatihan.
     train_data dan val_data bisa berupa tuple (X, Y) untuk mode numpy biasa,
@@ -51,6 +54,16 @@ def run_training(train_data, val_data,
         callbacks.EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True, verbose=1)
     ]
     
+    # Tambahkan autosave (overwrite) setiap epoch ke dalam folder jika diminta
+    if checkpoint_dir:
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+        # Menggunakan nama statis untuk memaksa Overwrite per epoch
+        epoch_save_path = os.path.join(checkpoint_dir, "latest_model_checkpoint.keras")
+        training_callbacks.append(
+            callbacks.ModelCheckpoint(epoch_save_path, save_best_only=False, verbose=0)
+        )
+
     if isinstance(train_data, tuple):
         # Mode High RAM (numpy arrays)
         X_train, Y_train = train_data

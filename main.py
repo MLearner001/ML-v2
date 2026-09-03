@@ -137,8 +137,10 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
 
         print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
         input_shape = (X_train.shape[1], X_train.shape[2])
+        ckpt_dir = os.path.join(out_dir, "checkpoints")
         model, history = run_training((X_train, Y_train), (X_val, Y_val) if len(X_val) > 0 else None,
-                                      input_shape=input_shape, model_save_path=output_model)
+                                      input_shape=input_shape, model_save_path=output_model,
+                                      checkpoint_dir=ckpt_dir)
     else:
         print("[INFO] Menggunakan Mode LOW RAM (On-the-fly Generator). Sangat hemat memori!")
         preprocessor.fit_scalers_only(train_dfs)
@@ -150,7 +152,9 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
         input_shape = (preprocessor.window_size, len(preprocessor.feature_cols))
 
         print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
-        model, history = run_training(train_gen, val_gen, input_shape=input_shape, model_save_path=output_model)
+        ckpt_dir = os.path.join(out_dir, "checkpoints")
+        model, history = run_training(train_gen, val_gen, input_shape=input_shape,
+                                      model_save_path=output_model, checkpoint_dir=ckpt_dir)
 
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
