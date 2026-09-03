@@ -54,11 +54,12 @@ def run_training(train_data, val_data,
         callbacks.EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True, verbose=1)
     ]
     
-    # Tambahkan autosave setiap epoch ke dalam folder jika diminta
+    # Tambahkan autosave (overwrite) setiap epoch ke dalam folder jika diminta
     if checkpoint_dir:
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
-        epoch_save_path = os.path.join(checkpoint_dir, "model_epoch_{epoch:03d}.keras")
+        # Menggunakan nama statis untuk memaksa Overwrite per epoch
+        epoch_save_path = os.path.join(checkpoint_dir, "latest_model_checkpoint.keras")
         training_callbacks.append(
             callbacks.ModelCheckpoint(epoch_save_path, save_best_only=False, verbose=0)
         )
