@@ -47,10 +47,13 @@ def predict_nc_file(mpf_filepath: str,
 
     # Pangkas prediksi agar secara matematis mematuhi hukum fisika CNC
     predicted_feedrate = np.minimum(predicted_feedrate, limit_f)
-    # --------------------------------------------------
 
-    # Pastikan tidak ada nilai di bawah batas minimum (1.0 mm/min)
-    predicted_feedrate = np.maximum(1.0, predicted_feedrate)
+    # --- [V2 UPDATE] PHYSICS-INFORMED LOWER BOUND CLIPPING ---
+    # Jangan biarkan prediksi terlalu lambat (hindari waktu membengkak)
+    # Batas bawah adalah 10% dari Command F, tapi absolut minimum 1.0 mm/min
+    min_f = np.maximum(1.0, limit_f * 0.10)
+    predicted_feedrate = np.maximum(predicted_feedrate, min_f)
+    # --------------------------------------------------
     
     df_parsed['Predicted_Feedrate_mm_min'] = predicted_feedrate
     
