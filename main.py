@@ -17,7 +17,8 @@ from inference_pipeline import predict_nc_file
 import glob
 
 def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
-                          resume_model: str = None, resume_scaler: str = None):
+                          resume_model: str = None, resume_scaler: str = None,
+                          learning_rate: float = 1e-3, initial_epoch: int = 0):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -147,7 +148,8 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
         ckpt_dir = os.path.join(out_dir, "checkpoints")
         model, history = run_training((X_train, Y_train), (X_val, Y_val) if len(X_val) > 0 else None,
                                       input_shape=input_shape, model_save_path=output_model,
-                                      checkpoint_dir=ckpt_dir, resume_model_path=resume_model)
+                                      checkpoint_dir=ckpt_dir, resume_model_path=resume_model,
+                                      learning_rate=learning_rate, initial_epoch=initial_epoch)
     else:
         print("[INFO] Menggunakan Mode LOW RAM (On-the-fly Generator). Sangat hemat memori!")
         if not is_resume_scaler:
@@ -163,7 +165,8 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
         ckpt_dir = os.path.join(out_dir, "checkpoints")
         model, history = run_training(train_gen, val_gen, input_shape=input_shape,
                                       model_save_path=output_model, checkpoint_dir=ckpt_dir,
-                                      resume_model_path=resume_model)
+                                      resume_model_path=resume_model, learning_rate=learning_rate,
+                                      initial_epoch=initial_epoch)
 
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
@@ -204,6 +207,8 @@ if __name__ == "__main__":
     train_parser.add_argument("--mem-mode", type=str, choices=["high", "low"], default="high", help="Pilih 'high' untuk RAM besar (cepat) atau 'low' untuk RAM kecil (hemat memory).")
     train_parser.add_argument("--resume-model", type=str, default=None, help="Path ke model lama (.keras) untuk melanjutkan pelatihan (Transfer Learning)")
     train_parser.add_argument("--resume-scaler", type=str, default=None, help="Path ke scaler lama (.pkl) agar distribusi metrik tetap konsisten")
+    train_parser.add_argument("--lr", type=float, default=0.001, help="Initial Learning Rate (contoh: 0.00025)")
+    train_parser.add_argument("--initial-epoch", type=int, default=0, help="Mulai resume dari epoch ke berapa (agar progress bar benar)")
 
     # Subparser untuk mode INFERENCE
     infer_parser = subparsers.add_parser("infer", help="Jalankan Pipeline Prediksi Standalone (Batch)")
@@ -217,7 +222,7 @@ if __name__ == "__main__":
             print("[ERROR] Pastikan argumen --data-dir adalah folder yang valid.")
             sys.exit(1)
         run_training_pipeline(args.data_dir, args.out_dir, args.mem_mode,
-                              args.resume_model, args.resume_scaler)
+                              args.resume_model, args.resume_scaler, args.lr, args.initial_epoch)
 
     elif args.mode == "infer":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
