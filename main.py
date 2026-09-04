@@ -15,6 +15,7 @@ from train_bi_lstm import run_training
 from inference_pipeline import predict_nc_file
 
 import glob
+import random
 
 import tensorflow as tf
 
@@ -123,6 +124,11 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
         print(f"[INFO] Memuat resume Scaler State dari: {resume_scaler}")
         preprocessor.load_scalers(resume_scaler)
         is_resume_scaler = True
+
+    # Mengacak (shuffle) daftar file agar representasi variasi gerakan mesin
+    # (Drill, 5-Axis, Contour, dsb) tersebar rata di Training dan Validasi.
+    # Menggunakan konstanta Seed (42) agar pengacakan selalu sama setiap script di-run.
+    random.Random(42).shuffle(synced_dfs)
 
     split_idx = int(0.8 * len(synced_dfs))
     if split_idx == 0 and len(synced_dfs) > 0:
