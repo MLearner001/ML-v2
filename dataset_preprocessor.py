@@ -136,7 +136,8 @@ class DatasetPreprocessor:
 
 class SlidingWindowGenerator(tf.keras.utils.Sequence):
     """Generator Data Keras untuk menghemat RAM secara drastis dengan membuat jendela 3D on-the-fly."""
-    def __init__(self, df_list: List[pd.DataFrame], preprocessor: DatasetPreprocessor, batch_size: int = 128):
+    def __init__(self, df_list: List[pd.DataFrame], preprocessor: DatasetPreprocessor, batch_size: int = 128, **kwargs):
+        super().__init__(**kwargs)  # Mencegah peringatan PyDataset Adapter di Keras 3
         self.batch_size = batch_size
         self.preprocessor = preprocessor
         self.window_size = preprocessor.window_size
