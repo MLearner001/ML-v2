@@ -49,15 +49,12 @@ def run_training(train_data, val_data,
     atau berupa tf.keras.utils.Sequence / generator untuk mode low-RAM.
     Jika resume_model_path diberikan, maka lanjutkan pelatihan dari model tersebut.
     """
+    model = build_bilstm_model(input_shape=input_shape, learning_rate=learning_rate)
+
     if resume_model_path and os.path.exists(resume_model_path):
-        print(f"[INFO] Meresume (Transfer Learning) dari model: {resume_model_path}")
-        # Memuat model komplit dengan arsitektur, optimizer, loss, dan states
-        model = tf.keras.models.load_model(resume_model_path, compile=True)
-        # Force update learning rate pada optimizer state model lama agar tidak me-reset jika user minta custom
-        if hasattr(model, 'optimizer') and hasattr(model.optimizer, 'learning_rate'):
-            model.optimizer.learning_rate.assign(learning_rate)
-    else:
-        model = build_bilstm_model(input_shape=input_shape, learning_rate=learning_rate)
+        print(f"[INFO] Meresume (Transfer Learning) dari bobot model: {resume_model_path}")
+        # Menghindari bug deserialisasi GlorotUniform di Keras 3 dengan hanya me-load bobotnya ke kerangka baru
+        model.load_weights(resume_model_path)
 
     model.summary()
     
