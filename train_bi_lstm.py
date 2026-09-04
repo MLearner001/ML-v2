@@ -8,7 +8,7 @@ from tensorflow.keras import layers, models, callbacks, optimizers
 import numpy as np
 from typing import Tuple
 
-def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
+def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3) -> tf.keras.Model:
     """Membangun arsitektur Dual-Layer Bi-LSTM."""
     inputs = layers.Input(shape=input_shape, name="NC_Sequence_Input")
     
@@ -29,7 +29,7 @@ def build_bilstm_model(input_shape: Tuple[int, int]) -> tf.keras.Model:
     
     # Optimizer AdamW dengan Huber Loss
     # We must use tf.keras.optimizers.AdamW in recent Keras / TF versions
-    optimizer = optimizers.AdamW(learning_rate=1e-3, weight_decay=1e-4)
+    optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-4)
     model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", "mse"])
     
     return model
@@ -39,13 +39,26 @@ import os
 def run_training(train_data, val_data,
                  input_shape: Tuple[int, int],
                  model_save_path: str = "bilstm_feedrate_model.keras",
-                 checkpoint_dir: str = None):
+                 checkpoint_dir: str = None,
+                 resume_model_path: str = None,
+                 learning_rate: float = 1e-3,
+                 initial_epoch: int = 0):
     """
     Menjalankan pelatihan.
     train_data dan val_data bisa berupa tuple (X, Y) untuk mode numpy biasa,
     atau berupa tf.keras.utils.Sequence / generator untuk mode low-RAM.
+    Jika resume_model_path diberikan, maka lanjutkan pelatihan dari model tersebut.
     """
-    model = build_bilstm_model(input_shape=input_shape)
+    if resume_model_path and os.path.exists(resume_model_path):
+        print(f"[INFO] Meresume (Transfer Learning) dari model: {resume_model_path}")
+        # Memuat model komplit dengan arsitektur, optimizer, loss, dan states
+        model = tf.keras.models.load_model(resume_model_path, compile=True)
+        # Force update learning rate pada optimizer state model lama agar tidak me-reset jika user minta custom
+        if hasattr(model, 'optimizer') and hasattr(model.optimizer, 'learning_rate'):
+            model.optimizer.learning_rate.assign(learning_rate)
+    else:
+        model = build_bilstm_model(input_shape=input_shape, learning_rate=learning_rate)
+
     model.summary()
     
     training_callbacks = [
@@ -72,6 +85,7 @@ def run_training(train_data, val_data,
             X_train, Y_train,
             validation_data=(X_val, Y_val),
             epochs=100,
+            initial_epoch=initial_epoch,
             batch_size=128,
             callbacks=training_callbacks,
             verbose=1
@@ -82,6 +96,7 @@ def run_training(train_data, val_data,
             x=train_data,
             validation_data=val_data,
             epochs=100,
+            initial_epoch=initial_epoch,
             callbacks=training_callbacks,
             verbose=1
         )

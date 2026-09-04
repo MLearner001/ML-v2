@@ -16,7 +16,9 @@ from inference_pipeline import predict_nc_file
 
 import glob
 
-def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
+def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
+                          resume_model: str = None, resume_scaler: str = None,
+                          learning_rate: float = 1e-3, initial_epoch: int = 0):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -105,6 +107,12 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
     print(f"\n{'='*50}\n[TAHAP 3] Scaling, Padding & Sequence Windowing (Batch)\n{'='*50}")
     preprocessor = DatasetPreprocessor(window_size=201)
 
+    is_resume_scaler = False
+    if resume_scaler and os.path.exists(resume_scaler):
+        print(f"[INFO] Memuat resume Scaler State dari: {resume_scaler}")
+        preprocessor.load_scalers(resume_scaler)
+        is_resume_scaler = True
+
     split_idx = int(0.8 * len(synced_dfs))
     if split_idx == 0 and len(synced_dfs) > 0:
         split_idx = 1 # Pastikan minimal ada 1 data training
@@ -117,7 +125,7 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
     if mem_mode == "high":
         print("[INFO] Menggunakan Mode HIGH RAM (Numpy Arrays 3D di Memori).")
         # Preprocessor menerima list dataframe dari berbagai file untuk di-fit scaler dan diubah ke window 3D
-        X_train, Y_train = preprocessor.fit_transform_dataset(train_dfs)
+        X_train, Y_train = preprocessor.fit_transform_dataset(train_dfs, is_resume=is_resume_scaler)
         X_val, Y_val = [], []
         if val_dfs:
             X_val, Y_val = preprocessor.fit_transform_dataset(val_dfs) # Should strictly just transform, but we use generator locally or separate the method
@@ -140,10 +148,12 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
         ckpt_dir = os.path.join(out_dir, "checkpoints")
         model, history = run_training((X_train, Y_train), (X_val, Y_val) if len(X_val) > 0 else None,
                                       input_shape=input_shape, model_save_path=output_model,
-                                      checkpoint_dir=ckpt_dir)
+                                      checkpoint_dir=ckpt_dir, resume_model_path=resume_model,
+                                      learning_rate=learning_rate, initial_epoch=initial_epoch)
     else:
         print("[INFO] Menggunakan Mode LOW RAM (On-the-fly Generator). Sangat hemat memori!")
-        preprocessor.fit_scalers_only(train_dfs)
+        if not is_resume_scaler:
+            preprocessor.fit_scalers_only(train_dfs)
         preprocessor.save_scalers(scaler_path)
 
         train_gen = SlidingWindowGenerator(train_dfs, preprocessor, batch_size=128)
@@ -154,7 +164,9 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high"):
         print(f"\n{'='*50}\n[TAHAP 4] Pelatihan Model Dual-Layer Bi-LSTM\n{'='*50}")
         ckpt_dir = os.path.join(out_dir, "checkpoints")
         model, history = run_training(train_gen, val_gen, input_shape=input_shape,
-                                      model_save_path=output_model, checkpoint_dir=ckpt_dir)
+                                      model_save_path=output_model, checkpoint_dir=ckpt_dir,
+                                      resume_model_path=resume_model, learning_rate=learning_rate,
+                                      initial_epoch=initial_epoch)
 
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
@@ -193,6 +205,10 @@ if __name__ == "__main__":
     train_parser.add_argument("--data-dir", type=str, required=True, help="Path folder data mentah (isi .mpf dan .csv)")
     train_parser.add_argument("--out-dir", type=str, default="output", help="Path folder hasil pipeline (default: output)")
     train_parser.add_argument("--mem-mode", type=str, choices=["high", "low"], default="high", help="Pilih 'high' untuk RAM besar (cepat) atau 'low' untuk RAM kecil (hemat memory).")
+    train_parser.add_argument("--resume-model", type=str, default=None, help="Path ke model lama (.keras) untuk melanjutkan pelatihan (Transfer Learning)")
+    train_parser.add_argument("--resume-scaler", type=str, default=None, help="Path ke scaler lama (.pkl) agar distribusi metrik tetap konsisten")
+    train_parser.add_argument("--lr", type=float, default=0.001, help="Initial Learning Rate (contoh: 0.00025)")
+    train_parser.add_argument("--initial-epoch", type=int, default=0, help="Mulai resume dari epoch ke berapa (agar progress bar benar)")
 
     # Subparser untuk mode INFERENCE
     infer_parser = subparsers.add_parser("infer", help="Jalankan Pipeline Prediksi Standalone (Batch)")
@@ -205,7 +221,8 @@ if __name__ == "__main__":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
             print("[ERROR] Pastikan argumen --data-dir adalah folder yang valid.")
             sys.exit(1)
-        run_training_pipeline(args.data_dir, args.out_dir, args.mem_mode)
+        run_training_pipeline(args.data_dir, args.out_dir, args.mem_mode,
+                              args.resume_model, args.resume_scaler, args.lr, args.initial_epoch)
 
     elif args.mode == "infer":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
