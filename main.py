@@ -16,6 +16,17 @@ from inference_pipeline import predict_nc_file
 
 import glob
 
+import tensorflow as tf
+
+# Terapkan Dynamic GPU Memory Growth untuk mencegah TF merampas seluruh VRAM (OOM Protection)
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    try:
+        for gpu in physical_devices:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
+
 def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
                           resume_model: str = None, resume_scaler: str = None,
                           learning_rate: float = 1e-3, initial_epoch: int = 0):
