@@ -398,20 +398,27 @@ class NCParser:
       delta_rot = math.sqrt(db**2 + dc**2)
       tool_vec_delta = math.sqrt(da3**2 + db3**2 + dc3**2)
 
-      sharpness_angle = self._calculate_sharpness_angle(
-          (self.state.prev_dx, self.state.prev_dy, self.state.prev_dz),
-          (dx, dy, dz),
-      )
+      # Circular motions (G02/G03) are smooth arcs, not sharp lines.
+      if self.state.motion_mode in ["G02", "G03"]:
+        sharpness_angle = 0.0
+        is_reversal_x = 0
+        is_reversal_y = 0
+        is_reversal_z = 0
+      else:
+        sharpness_angle = self._calculate_sharpness_angle(
+            (self.state.prev_dx, self.state.prev_dy, self.state.prev_dz),
+            (dx, dy, dz),
+        )
 
-      is_reversal_x = (
-          1 if (dx * self.state.prev_dx < 0 and abs(dx) > 1e-4) else 0
-      )
-      is_reversal_y = (
-          1 if (dy * self.state.prev_dy < 0 and abs(dy) > 1e-4) else 0
-      )
-      is_reversal_z = (
-          1 if (dz * self.state.prev_dz < 0 and abs(dz) > 1e-4) else 0
-      )
+        is_reversal_x = (
+            1 if (dx * self.state.prev_dx < 0 and abs(dx) > 1e-4) else 0
+        )
+        is_reversal_y = (
+            1 if (dy * self.state.prev_dy < 0 and abs(dy) > 1e-4) else 0
+        )
+        is_reversal_z = (
+            1 if (dz * self.state.prev_dz < 0 and abs(dz) > 1e-4) else 0
+        )
 
       is_motion = (
           1 if (delta_3d > 1e-4 or delta_rot > 1e-4 or tool_vec_delta > 1e-4) else 0
