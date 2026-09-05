@@ -225,9 +225,9 @@ if __name__ == "__main__":
     train_parser.add_argument("--mem-mode", type=str, choices=["high", "low"], default="high", help="Pilih 'high' untuk RAM besar (cepat) atau 'low' untuk RAM kecil (hemat memory).")
     train_parser.add_argument("--resume-model", type=str, default=None, help="Path ke model lama (.keras) untuk melanjutkan pelatihan (Transfer Learning)")
     train_parser.add_argument("--resume-scaler", type=str, default=None, help="Path ke scaler lama (.pkl) agar distribusi metrik tetap konsisten")
-    train_parser.add_argument("--lr", type=float, default=0.001, help="Initial Learning Rate (contoh: 0.00025)")
+    train_parser.add_argument("--lr", type=float, default=0.0005, help="Initial Learning Rate (contoh: 0.0005)")
     train_parser.add_argument("--initial-epoch", type=int, default=0, help="Mulai resume dari epoch ke berapa (agar progress bar benar)")
-    train_parser.add_argument("--lstm-units", type=int, default=256, help="Kapasitas neuron model untuk Fase 2 (default: 256)")
+    train_parser.add_argument("--lstm-units", type=int, default=128, help="Kapasitas neuron model untuk Fase 2 (default: 128)")
     train_parser.add_argument("--epochs", type=int, default=100, help="Total epochs untuk pelatihan")
     train_parser.add_argument("--batch-size", type=int, default=128, help="Ukuran batch untuk generator (low RAM) / numpy (high RAM)")
 

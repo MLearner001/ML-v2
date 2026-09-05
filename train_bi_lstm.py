@@ -14,7 +14,7 @@ def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3
     
     # Layer 1: Bidirectional LSTM dengan Feature Dropout
     x = layers.Bidirectional(layers.LSTM(128, return_sequences=True, name="BiLSTM_L1"))(inputs)
-    x = layers.SpatialDropout1D(0.2)(x)
+    x = layers.SpatialDropout1D(0.4)(x)
     
     # Layer 2: Bidirectional LSTM memadat ke konteks target tengah
     x = layers.Bidirectional(layers.LSTM(128, return_sequences=False, name="BiLSTM_L2"))(x)
@@ -22,14 +22,16 @@ def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3
     
     # Dense Regressor Head
     x = layers.Dense(64, activation="relu")(x)
-    x = layers.Dropout(0.1)(x)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(32, activation="relu")(x)
+    x = layers.Dropout(0.2)(x)
     outputs = layers.Dense(1, activation="linear", name="Normalized_Feedrate_Output")(x)
     
     model = models.Model(inputs=inputs, outputs=outputs, name="CNC_Kinematics_BiLSTM")
     
     # Optimizer AdamW dengan Huber Loss
     # We must use tf.keras.optimizers.AdamW in recent Keras / TF versions
-    optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-4)
+    optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-3)
     model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", "mse"])
     
     return model

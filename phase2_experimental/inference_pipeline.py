@@ -62,10 +62,15 @@ def predict_nc_file(mpf_filepath: str,
     limit_f = df_parsed['Cmd_F'].values
     equivalent_feedrate = np.minimum(equivalent_feedrate, limit_f)
 
-    df_parsed['Predicted_Feedrate_mm_min'] = equivalent_feedrate
-    df_parsed['Estimated_Duration_Sec'] = block_durations_sec
+    # Rekalkulasi Estimated Duration Sec yang secara fisika selaras dengan feedrate yang sudah di-clip
+    # Jika feedrate ter-clip (turun) maka waktu aktual secara mekanika harus lebih lama.
+    recalculated_durations_sec = np.where(equivalent_feedrate > 1e-4, (effective_distance / equivalent_feedrate) * 60.0, 0.0)
+    recalculated_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, recalculated_durations_sec, 0.0)
 
-    total_time_sec = float(np.sum(block_durations_sec))
+    df_parsed['Predicted_Feedrate_mm_min'] = equivalent_feedrate
+    df_parsed['Estimated_Duration_Sec'] = recalculated_durations_sec
+
+    total_time_sec = float(np.sum(recalculated_durations_sec))
     total_time_min = total_time_sec / 60.0
 
     # Simpan hasil analisis profil feedrate ke CSV

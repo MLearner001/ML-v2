@@ -10,48 +10,36 @@ from typing import Tuple
 
 import tensorflow.keras.backend as K
 
-def duration_weighted_msle(y_true, y_pred):
-    """
-    Custom Loss: Mean Squared Logarithmic Error (MSLE).
-    Sangat cocok untuk Time Series Regresi karena secara natural memberikan
-    penalti yang jauh lebih asimetris pada nilai-nilai yang sangat kecil
-    (misal: memprediksi 2 vs 10 akan dihukum lebih berat daripada 20.000 vs 19.000).
-    Ini mensimulasikan 'Duration-Penalty' secara aman tanpa menyebabkan Exploding Gradients
-    yang biasa terjadi pada pembagian murni 1/v.
-    """
-    # Keras MSLE: mean(square(log(y_true + 1) - log(y_pred + 1)))
-    # Mengamankan prediksi negatif
-    y_pred = tf.maximum(y_pred, 0.0)
-    msle = tf.keras.losses.MeanSquaredLogarithmicError()
-    return msle(y_true, y_pred)
-
-def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3, lstm_units: int = 256) -> tf.keras.Model:
+def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3, lstm_units: int = 128) -> tf.keras.Model:
     """Membangun arsitektur Dual-Layer Bi-LSTM."""
     inputs = layers.Input(shape=input_shape, name="NC_Sequence_Input")
 
     # Layer 1: Bidirectional LSTM dengan Feature Dropout
     # Fase 2: Kita menggunakan kapasitas sel yang dapat diubah dan memperkuat dropouts.
     x = layers.Bidirectional(layers.LSTM(lstm_units, return_sequences=True, name="forward_BiLSTM_L1"))(inputs)
-    x = layers.SpatialDropout1D(0.3)(x)
+    x = layers.SpatialDropout1D(0.4)(x)
 
     # Layer 2: Bidirectional LSTM memadat ke konteks target tengah
     x = layers.Bidirectional(layers.LSTM(lstm_units, return_sequences=False, name="forward_BiLSTM_L2"))(x)
     x = layers.BatchNormalization()(x)
 
     # Dense Regressor Head
-    x = layers.Dense(128, activation="relu")(x)
-    x = layers.Dropout(0.2)(x)
     x = layers.Dense(64, activation="relu")(x)
-    x = layers.Dropout(0.1)(x)
+    x = layers.Dropout(0.3)(x)
+    x = layers.Dense(32, activation="relu")(x)
+    x = layers.Dropout(0.2)(x)
     outputs = layers.Dense(1, activation="linear", name="Normalized_Feedrate_Output")(x)
 
     model = models.Model(inputs=inputs, outputs=outputs, name="CNC_Kinematics_BiLSTM")
 
     # Optimizer AdamW
-    optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-4)
+    # Memperbesar weight decay untuk membantu regularisasi melawan overfitting memori panjang
+    optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-3)
 
-    # Fase 2: Menggunakan Custom Loss (MSLE) menggantikan Huber
-    model.compile(optimizer=optimizer, loss=duration_weighted_msle, metrics=["mae", "mse"])
+    # Fase 2: Gunakan Huber Loss.
+    # Karena target variabel (Duration_Sec) sudah di log1p + StandardScaler di preprocessor (bisa bernilai negatif),
+    # kita tidak boleh menggunakan MSLE karena MSLE akan memaksa semua nilai negatif menjadi 0, menghancurkan ground-truth.
+    model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", "mse"])
 
     return model
 
