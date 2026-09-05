@@ -31,7 +31,7 @@ if physical_devices:
 def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
                           resume_model: str = None, resume_scaler: str = None,
                           learning_rate: float = 1e-3, initial_epoch: int = 0,
-                          lstm_units: int = 256):
+                          lstm_units: int = 256, epochs: int = 100, batch_size: int = 128):
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
@@ -166,15 +166,15 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
                                       input_shape=input_shape, model_save_path=output_model,
                                       checkpoint_dir=ckpt_dir, resume_model_path=resume_model,
                                       learning_rate=learning_rate, initial_epoch=initial_epoch,
-                                      lstm_units=lstm_units)
+                                      lstm_units=lstm_units, epochs=epochs)
     else:
         print("[INFO] Menggunakan Mode LOW RAM (On-the-fly Generator). Sangat hemat memori!")
         if not is_resume_scaler:
             preprocessor.fit_scalers_only(train_dfs)
         preprocessor.save_scalers(scaler_path)
 
-        train_gen = SlidingWindowGenerator(train_dfs, preprocessor, batch_size=128)
-        val_gen = SlidingWindowGenerator(val_dfs, preprocessor, batch_size=128) if val_dfs else None
+        train_gen = SlidingWindowGenerator(train_dfs, preprocessor, batch_size=batch_size)
+        val_gen = SlidingWindowGenerator(val_dfs, preprocessor, batch_size=batch_size) if val_dfs else None
 
         input_shape = (preprocessor.window_size, len(preprocessor.feature_cols))
 
@@ -183,7 +183,8 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
         model, history = run_training(train_gen, val_gen, input_shape=input_shape,
                                       model_save_path=output_model, checkpoint_dir=ckpt_dir,
                                       resume_model_path=resume_model, learning_rate=learning_rate,
-                                      initial_epoch=initial_epoch, lstm_units=lstm_units)
+                                      initial_epoch=initial_epoch, lstm_units=lstm_units,
+                                      epochs=epochs)
 
     print(f"Model berhasil dilatih dan disimpan di: {output_model}")
     print("End-to-End Training Pipeline selesai.\n")
@@ -227,6 +228,8 @@ if __name__ == "__main__":
     train_parser.add_argument("--lr", type=float, default=0.001, help="Initial Learning Rate (contoh: 0.00025)")
     train_parser.add_argument("--initial-epoch", type=int, default=0, help="Mulai resume dari epoch ke berapa (agar progress bar benar)")
     train_parser.add_argument("--lstm-units", type=int, default=256, help="Kapasitas neuron model untuk Fase 2 (default: 256)")
+    train_parser.add_argument("--epochs", type=int, default=100, help="Total epochs untuk pelatihan")
+    train_parser.add_argument("--batch-size", type=int, default=128, help="Ukuran batch untuk generator (low RAM) / numpy (high RAM)")
 
     # Subparser untuk mode INFERENCE
     infer_parser = subparsers.add_parser("infer", help="Jalankan Pipeline Prediksi Standalone (Batch)")
@@ -241,7 +244,8 @@ if __name__ == "__main__":
             sys.exit(1)
         run_training_pipeline(args.data_dir, args.out_dir, args.mem_mode,
                               args.resume_model, args.resume_scaler, args.lr,
-                              args.initial_epoch, args.lstm_units)
+                              args.initial_epoch, args.lstm_units,
+                              args.epochs, args.batch_size)
 
     elif args.mode == "infer":
         if not os.path.exists(args.data_dir) or not os.path.isdir(args.data_dir):
