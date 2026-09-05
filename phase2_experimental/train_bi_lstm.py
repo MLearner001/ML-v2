@@ -63,7 +63,8 @@ def run_training(train_data, val_data,
                  resume_model_path: str = None,
                  learning_rate: float = 1e-3,
                  initial_epoch: int = 0,
-                 lstm_units: int = 256):
+                 lstm_units: int = 256,
+                 epochs: int = 200):
     """
     Menjalankan pelatihan.
     train_data dan val_data bisa berupa tuple (X, Y) untuk mode numpy biasa,
@@ -102,9 +103,9 @@ def run_training(train_data, val_data,
         history = model.fit(
             X_train, Y_train,
             validation_data=(X_val, Y_val),
-            epochs=100,
+            epochs=epochs,
             initial_epoch=initial_epoch,
-            batch_size=128,
+            batch_size=128,  # Batch size ini untuk tensorflow model fit jika pakai mode numpy array (HIGH RAM). Karena Low RAM pake generator, batch size diatur di generatornya.
             callbacks=training_callbacks,
             verbose=1
         )
@@ -113,7 +114,7 @@ def run_training(train_data, val_data,
         history = model.fit(
             x=train_data,
             validation_data=val_data,
-            epochs=100,
+            epochs=epochs,
             initial_epoch=initial_epoch,
             callbacks=training_callbacks,
             verbose=1
