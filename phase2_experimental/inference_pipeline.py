@@ -80,7 +80,7 @@ def predict_nc_file(mpf_filepath: str,
     df_parsed.to_csv(output_csv, index=False)
 
     print("\n" + "="*50)
-    print("HASIL PREDIKSI MACHINING TIME (DIGITAL TWIN BI-LSTM V2)")
+    print("HASIL PREDIKSI MACHINING TIME (DIGITAL TWIN PHASE 2 - V3)")
     print("="*50)
     print(f"Total Blok Program     : {len(df_parsed)} baris")
     print(f"Total Estimasi Waktu   : {total_time_sec:.2f} detik ({total_time_min:.2f} menit)")
