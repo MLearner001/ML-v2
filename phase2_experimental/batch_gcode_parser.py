@@ -316,6 +316,11 @@ class NCParser:
           # [Fase 2] Kinematic Blend Ratio (Rotasi per Translasi)
           blend_ratio = 0.0 / (delta_3d + 1e-6)
 
+          # [Fase 2 Update] Theoretical Duration (Seconds)
+          # Asumsi minimal velocity 1.0 mm/min untuk menghindari div by zero
+          safe_f = max(1.0, effective_f)
+          theo_duration = (delta_3d / safe_f) * 60.0
+
           parsed_rows.append({
               "Block_ID": sub_id,
               "N_Number": n_number if n_number else -1,
@@ -357,6 +362,7 @@ class NCParser:
               "Is_Reversal_Z": (
                   1 if (dz * self.state.prev_dz < 0 and abs(dz) > 1e-4) else 0
               ),
+              "Theo_Duration": theo_duration,
           })
 
           # Update state
@@ -367,6 +373,7 @@ class NCParser:
               dz,
           )
 
+        absolute_idx += 1
         continue
 
       # -------------------------------------------------------------
@@ -410,6 +417,14 @@ class NCParser:
       # [Fase 2] Kinematic Blend Ratio
       blend_ratio = delta_rot / (delta_3d + 1e-6)
 
+      # [Fase 2 Update] Theoretical Duration (Seconds)
+      safe_f = max(1.0, effective_limit_f)
+      # Jika hanya rotasi tanpa translasi, kita menggunakan estimasi kecepatan rotasi B/C maksimal (misal 5000 derajat/menit)
+      if delta_3d < 1e-4 and delta_rot > 1e-4:
+          theo_duration = (delta_rot / 5000.0) * 60.0
+      else:
+          theo_duration = (delta_3d / safe_f) * 60.0
+
       parsed_rows.append({
           "Block_ID": str(block_id),
           "N_Number": n_number if n_number else -1,
@@ -445,6 +460,7 @@ class NCParser:
           "Is_Reversal_X": is_reversal_x,
           "Is_Reversal_Y": is_reversal_y,
           "Is_Reversal_Z": is_reversal_z,
+          "Theo_Duration": theo_duration,
       })
 
       # Update State

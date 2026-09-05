@@ -145,8 +145,6 @@ def run_training_pipeline(data_dir: str, out_dir: str, mem_mode: str = "high",
         X_train, Y_train = preprocessor.fit_transform_dataset(train_dfs, is_resume=is_resume_scaler)
         X_val, Y_val = [], []
         if val_dfs:
-            X_val, Y_val = preprocessor.fit_transform_dataset(val_dfs) # Should strictly just transform, but we use generator locally or separate the method
-            # Perbaikan: fit_transform_dataset akan mengubah scaler, kita harus memastikan validasi tidak mem-fit
             X_val_list, Y_val_list = [], []
             for df in val_dfs:
                 x_p, y_p = preprocessor.transform_file(df, is_training=True)
