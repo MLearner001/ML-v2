@@ -37,37 +37,32 @@ def predict_nc_file(mpf_filepath: str,
     model = tf.keras.models.load_model(model_path, compile=False)
     y_pred_scaled = model.predict(X_windows, batch_size=256, verbose=0)
 
-    # 4. Inverse Transform untuk Mendapatkan Feedrate Aktual (mm/min)
+    # 4. Inverse Transform untuk Mendapatkan Waktu Aktual (Detik)
     y_pred_log = preprocessor.target_scaler.inverse_transform(y_pred_scaled)
-    predicted_feedrate = np.expm1(y_pred_log).flatten()
+    predicted_duration_sec = np.expm1(y_pred_log).flatten()
 
-    # --- [V2 UPDATE] PHYSICS-INFORMED HARD CLIPPING ---
-    # Ambil batas maksimal dari kolom Cmd_F (sudah mengandung limit 20000 untuk G00)
-    limit_f = df_parsed['Cmd_F'].values
-
-    # Pangkas prediksi agar secara matematis mematuhi hukum fisika CNC
-    predicted_feedrate = np.minimum(predicted_feedrate, limit_f)
-
-    # --- [V2 UPDATE] PHYSICS-INFORMED LOWER BOUND CLIPPING ---
-    # Jangan biarkan prediksi terlalu lambat (hindari waktu membengkak)
-    # Batas bawah adalah 10% dari Command F, tapi absolut minimum 1.0 mm/min
-    min_f = np.maximum(1.0, limit_f * 0.10)
-    predicted_feedrate = np.maximum(predicted_feedrate, min_f)
-    # --------------------------------------------------
-
-    df_parsed['Predicted_Feedrate_mm_min'] = predicted_feedrate
-
-    # 5. Integrasi Kinematika Fisik
+    # 5. Integrasi Kinematika Fisik & Pengecekan Validitas
     # Gunakan Delta_3D untuk pergerakan linier atau Delta_Rot untuk pergerakan putar
     effective_distance = np.where(df_parsed['Delta_3D'] > 1e-4,
                                   df_parsed['Delta_3D'],
                                   df_parsed['Delta_Rot'])
 
-    # t_i = (Jarak / Kecepatan) * 60 detik
-    block_durations_sec = (effective_distance / predicted_feedrate) * 60.0
+    # Jika blok non-motion (Delta=0), beri durasi 0 agar aman
+    block_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, predicted_duration_sec, 0.0)
 
-    # Jika blok non-motion (Delta=0), beri durasi 0
-    block_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, block_durations_sec, 0.0)
+    # --- [Fase 2] Menghitung ulang Feedrate yang setara (Opsional untuk pelaporan CSV) ---
+    # F = (Jarak / Waktu) * 60
+    # Hindari ZeroDivision jika model meprediksi waktu 0 detik pada blok gerak
+    safe_durations = np.maximum(block_durations_sec, 1e-6)
+    equivalent_feedrate = (effective_distance / safe_durations) * 60.0
+    # Jika itu blok non-motion, set feedrate laporan jadi 0
+    equivalent_feedrate = np.where(df_parsed['Is_Motion_Block'] == 1, equivalent_feedrate, 0.0)
+
+    # --- Clipping pelaporan agar feedrate laporan tidak melebihi kecepatan limit G-code/Mesin ---
+    limit_f = df_parsed['Cmd_F'].values
+    equivalent_feedrate = np.minimum(equivalent_feedrate, limit_f)
+
+    df_parsed['Predicted_Feedrate_mm_min'] = equivalent_feedrate
     df_parsed['Estimated_Duration_Sec'] = block_durations_sec
 
     total_time_sec = float(np.sum(block_durations_sec))

@@ -41,8 +41,8 @@ class DatasetPreprocessor:
         if 'Kinematic_Blend_Ratio' in df_out.columns:
             df_out['Kinematic_Blend_Ratio'] = np.log1p(np.maximum(0.0, df_out['Kinematic_Blend_Ratio'].values))
 
-        if is_training and 'Target_Feedrate' in df_out.columns:
-            df_out['Target_Feedrate'] = np.log1p(np.maximum(0.0, df_out['Target_Feedrate'].values))
+        if is_training and 'Duration_Sec' in df_out.columns:
+            df_out['Duration_Sec'] = np.log1p(np.maximum(0.0, df_out['Duration_Sec'].values))
 
         return df_out
 
@@ -51,7 +51,7 @@ class DatasetPreprocessor:
         # Menggunakan loop parsial atau concat (concat masih aman untuk memori 2D)
         combined_df = pd.concat([self._apply_log_transforms(df, is_training=True) for df in df_list], axis=0)
         self.feature_scaler.fit(combined_df[self.feature_cols])
-        self.target_scaler.fit(combined_df[['Target_Feedrate']])
+        self.target_scaler.fit(combined_df[['Duration_Sec']])
 
     def fit_transform_dataset(self, df_list: List[pd.DataFrame], is_resume: bool = False) -> Tuple[np.ndarray, np.ndarray]:
         """Fit scaler pada kumpulan data training dan kembalikan tensor (X, Y). (Mode High-RAM)"""
@@ -92,8 +92,8 @@ class DatasetPreprocessor:
         if 'Theo_Duration' in standstill_df.columns:
             # Durasi diam = 0
             standstill_df['Theo_Duration'] = 0.0
-        if 'Target_Feedrate' in standstill_df.columns:
-            standstill_df['Target_Feedrate'] = 0.0
+        if 'Duration_Sec' in standstill_df.columns:
+            standstill_df['Duration_Sec'] = 0.0
 
         scaled_standstill = self.feature_scaler.transform(standstill_df[self.feature_cols])
 
@@ -111,7 +111,7 @@ class DatasetPreprocessor:
             np.repeat(scaled_standstill, self.half_w, axis=0)
         ])
 
-        scaled_target = self.target_scaler.transform(df_prep[['Target_Feedrate']]).astype(np.float32) if 'Target_Feedrate' in df_prep.columns else None
+        scaled_target = self.target_scaler.transform(df_prep[['Duration_Sec']]).astype(np.float32) if 'Duration_Sec' in df_prep.columns else None
 
         return padded_features, scaled_target
 
