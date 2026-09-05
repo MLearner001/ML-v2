@@ -23,7 +23,7 @@ class DatasetPreprocessor:
             'Cmd_F', 'Cmd_S', 'Is_G01', 'Is_G02', 'Is_G03', 'Is_Traori',
             'Is_Cycle800', 'Is_MCALL_Sub', 'C832_Tol', 'C832_Mode',
             'Delta_3D', 'Delta_Rot', 'Tool_Vector_Delta', 'Kinematic_Blend_Ratio', 'Sharpness_Angle',
-            'Is_Motion_Block', 'Is_Reversal_X', 'Is_Reversal_Y', 'Is_Reversal_Z'
+            'Is_Motion_Block', 'Is_Reversal_X', 'Is_Reversal_Y', 'Is_Reversal_Z', 'Theo_Duration'
         ]
 
     def _apply_log_transforms(self, df: pd.DataFrame, is_training: bool = True) -> pd.DataFrame:
@@ -32,6 +32,10 @@ class DatasetPreprocessor:
         df_out['Delta_3D'] = np.log1p(np.maximum(0.0, df_out['Delta_3D'].values))
         df_out['Cmd_F'] = np.log1p(np.maximum(0.0, df_out['Cmd_F'].values))
         df_out['Sharpness_Angle'] = df_out['Sharpness_Angle'].values / np.pi
+
+        # Log kompresi untuk Theo_Duration karena rentangnya bisa bervariasi dari ms hingga menit
+        if 'Theo_Duration' in df_out.columns:
+            df_out['Theo_Duration'] = np.log1p(np.maximum(0.0, df_out['Theo_Duration'].values))
 
         # Log kompresi untuk blend ratio karena bisa meledak saat translasi = 0
         if 'Kinematic_Blend_Ratio' in df_out.columns:
@@ -85,6 +89,9 @@ class DatasetPreprocessor:
             standstill_df['Delta_Rot'] = 0.0
         if 'Kinematic_Blend_Ratio' in standstill_df.columns:
             standstill_df['Kinematic_Blend_Ratio'] = 0.0
+        if 'Theo_Duration' in standstill_df.columns:
+            # Durasi diam = 0
+            standstill_df['Theo_Duration'] = 0.0
         if 'Target_Feedrate' in standstill_df.columns:
             standstill_df['Target_Feedrate'] = 0.0
 
