@@ -131,21 +131,35 @@ class NCParser:
     clean_line = line.strip().upper()
     if "MCALL" in clean_line:
       if "CYCLE" in clean_line:
-        match = re.search(r"CYCLE\d+\s*\(([^)]+)\)", clean_line)
+        match = re.search(r"CYCLE\d+\s*\(([^)]*)\)", clean_line)
         if match:
+          raw_args = match.group(1).split(",")
           args = [
-              float(arg.strip()) if arg.strip() else 0.0
-              for arg in match.group(1).split(",")
+              float(arg.strip()) if arg.strip() else None
+              for arg in raw_args
           ]
-          # Standard Siemens: RTP (Return), RFP (Reference), SDIS (Safety), DP (Final Depth)
-          if len(args) >= 4:
-            self.state.mcall_params = {
-                "rtp": args[0],
-                "rfp": args[1],
-                "sdis": args[2],
-                "dp": args[3],
-            }
-            self.state.is_mcall_active = True
+          args.extend([None] * (6 - len(args)))
+
+          rtp = args[0] if args[0] is not None else 0.0
+          rfp = args[1] if args[1] is not None else 0.0
+          sdis = args[2] if args[2] is not None else 0.0
+          dp = args[3]
+          dpr = args[4]
+
+          if dp is None and dpr is not None:
+             dp_val = rfp - abs(dpr)
+          elif dp is not None:
+             dp_val = dp
+          else:
+             dp_val = 0.0
+
+          self.state.mcall_params = {
+              "rtp": rtp,
+              "rfp": rfp,
+              "sdis": sdis,
+              "dp": dp_val,
+          }
+          self.state.is_mcall_active = True
       else:
         # MCALL tanpa argumen = Membatalkan MCALL
         self.state.is_mcall_active = False
@@ -221,10 +235,12 @@ class NCParser:
         self.state.is_absolute = False
 
       # 4. Commanded Feedrate & Spindle
-      f_match = re.search(r"\bF\s*=\s*([^\s,]+)|\bF([0-9\.]+)", line)
-      if f_match:
-        f_val_str = f_match.group(1) if f_match.group(1) else f_match.group(2)
-        self.state.cmd_f = self._evaluate_r_param(f_val_str)
+      # G04 F... signifies Dwell Time, NOT modal feedrate.
+      if not re.search(r"\bG0*4\b", line, re.IGNORECASE):
+        f_match = re.search(r"\bF\s*=\s*([^\s,]+)|\bF([0-9\.]+)", line)
+        if f_match:
+          f_val_str = f_match.group(1) if f_match.group(1) else f_match.group(2)
+          self.state.cmd_f = self._evaluate_r_param(f_val_str)
 
       s_match = re.search(r"\bS\s*=\s*([^\s,]+)|\bS([0-9\.]+)", line)
       if s_match:
