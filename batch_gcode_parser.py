@@ -235,10 +235,12 @@ class NCParser:
         self.state.is_absolute = False
 
       # 4. Commanded Feedrate & Spindle
-      f_match = re.search(r"\bF\s*=\s*([^\s,]+)|\bF([0-9\.]+)", line)
-      if f_match:
-        f_val_str = f_match.group(1) if f_match.group(1) else f_match.group(2)
-        self.state.cmd_f = self._evaluate_r_param(f_val_str)
+      # G04 F... signifies Dwell Time, NOT modal feedrate.
+      if not re.search(r"\bG0*4\b", line, re.IGNORECASE):
+        f_match = re.search(r"\bF\s*=\s*([^\s,]+)|\bF([0-9\.]+)", line)
+        if f_match:
+          f_val_str = f_match.group(1) if f_match.group(1) else f_match.group(2)
+          self.state.cmd_f = self._evaluate_r_param(f_val_str)
 
       s_match = re.search(r"\bS\s*=\s*([^\s,]+)|\bS([0-9\.]+)", line)
       if s_match:
