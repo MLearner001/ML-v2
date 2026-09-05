@@ -22,7 +22,8 @@ def duration_weighted_msle(y_true, y_pred):
     # Keras MSLE: mean(square(log(y_true + 1) - log(y_pred + 1)))
     # Mengamankan prediksi negatif
     y_pred = tf.maximum(y_pred, 0.0)
-    return tf.keras.losses.mean_squared_logarithmic_error(y_true, y_pred)
+    msle = tf.keras.losses.MeanSquaredLogarithmicError()
+    return msle(y_true, y_pred)
 
 def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3, lstm_units: int = 256) -> tf.keras.Model:
     """Membangun arsitektur Dual-Layer Bi-LSTM."""
