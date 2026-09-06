@@ -136,11 +136,12 @@ class DatasetPreprocessor:
 
 class SlidingWindowGenerator(tf.keras.utils.Sequence):
     """Generator Data Keras untuk menghemat RAM secara drastis dengan membuat jendela 3D on-the-fly."""
-    def __init__(self, df_list: List[pd.DataFrame], preprocessor: DatasetPreprocessor, batch_size: int = 128, **kwargs):
+    def __init__(self, df_list: List[pd.DataFrame], preprocessor: DatasetPreprocessor, batch_size: int = 128, is_training: bool = True, **kwargs):
         super().__init__(**kwargs)  # Mencegah peringatan PyDataset Adapter di Keras 3
         self.batch_size = batch_size
         self.preprocessor = preprocessor
         self.window_size = preprocessor.window_size
+        self.is_training = is_training
 
         # Pre-compute padded 2D features untuk seluruh dataset agar tidak terlalu lambat
         self.X_padded_list = []
@@ -150,10 +151,11 @@ class SlidingWindowGenerator(tf.keras.utils.Sequence):
         self.file_indices = [] # Menyimpan tuple (file_idx, row_idx) untuk setiap global sample_idx
 
         for file_idx, df in enumerate(df_list):
-            df_prep = preprocessor._apply_log_transforms(df, is_training=True)
+            df_prep = preprocessor._apply_log_transforms(df, is_training=self.is_training)
             padded_feat, scaled_y = preprocessor.get_padded_features(df_prep)
             self.X_padded_list.append(padded_feat)
-            self.Y_list.append(scaled_y)
+            if self.is_training:
+                self.Y_list.append(scaled_y)
 
             num_rows = len(df)
             self.total_samples += num_rows
@@ -178,6 +180,10 @@ class SlidingWindowGenerator(tf.keras.utils.Sequence):
 
             window = padded_arr[row_idx : row_idx + self.window_size]
             batch_x.append(window)
-            batch_y.append(self.Y_list[file_idx][row_idx])
+            if self.is_training:
+                batch_y.append(self.Y_list[file_idx][row_idx])
 
-        return np.array(batch_x, dtype=np.float32), np.array(batch_y, dtype=np.float32)
+        if self.is_training:
+            return np.array(batch_x, dtype=np.float32), np.array(batch_y, dtype=np.float32)
+        else:
+            return np.array(batch_x, dtype=np.float32)

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from batch_gcode_parser import NCParser
-from dataset_preprocessor import DatasetPreprocessor
+from dataset_preprocessor import DatasetPreprocessor, SlidingWindowGenerator
 from typing import Dict
 
 import os
@@ -31,11 +31,12 @@ def predict_nc_file(mpf_filepath: str,
     preprocessor = DatasetPreprocessor(window_size=201)
     preprocessor.load_scalers(scaler_path)
 
-    X_windows = preprocessor.transform_file(df_parsed, is_training=False)
+    # Gunakan SlidingWindowGenerator (mem-mode low) agar WSL/RAM tidak OOM terbunuh paksa pada file gcode besar
+    infer_generator = SlidingWindowGenerator([df_parsed], preprocessor, batch_size=256, is_training=False)
 
     print(f"[INFO] 3. Memuat Model Bi-LSTM & Menjalankan Inferensi...")
     model = tf.keras.models.load_model(model_path, compile=False)
-    y_pred_scaled = model.predict(X_windows, batch_size=256, verbose=0)
+    y_pred_scaled = model.predict(infer_generator, verbose=1)
 
     # 4. Inverse Transform untuk Mendapatkan Waktu Aktual (Detik)
     y_pred_log = preprocessor.target_scaler.inverse_transform(y_pred_scaled)
