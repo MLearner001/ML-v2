@@ -1,7 +1,7 @@
 """
 inference_pipeline.py
 Tahap 5: Eksekusi Inferensi Standalone pada File Program NC Baru (.mpf).
-(Updated: V2 dengan Physics-Informed Hard-Clipping)
+(Updated: V3 tanpa Hard-Clipping dan dengan fix bug inverse transformation)
 """
 
 import sys
@@ -40,7 +40,7 @@ def predict_nc_file(mpf_filepath: str,
 
     # 4. Inverse Transform untuk Mendapatkan Waktu Aktual (Detik)
     y_pred_log = preprocessor.target_scaler.inverse_transform(y_pred_scaled)
-    predicted_duration_sec = np.expm1(y_pred_log).flatten()
+    predicted_feedrate = np.maximum(1.0, np.expm1(y_pred_log).flatten())
 
     # 5. Integrasi Kinematika Fisik & Pengecekan Validitas
     # Gunakan Delta_3D untuk pergerakan linier atau Delta_Rot untuk pergerakan putar
@@ -49,19 +49,8 @@ def predict_nc_file(mpf_filepath: str,
                                   df_parsed['Delta_Rot'])
 
     # Jika blok non-motion (Delta=0), beri durasi 0 agar aman
-    block_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, predicted_duration_sec, 0.0)
-
-    # --- [Fase 2] MURNI AI PREDICTION (Tanpa Hard-Clipping) ---
-    # Karena model dilatih langsung memprediksi Duration_Sec (termasuk akselerasi/deselerasi),
-    # kita tidak boleh memotongnya dengan batas Cmd_F, agar hasil AI muncul secara murni (Actual Time).
-
-    safe_durations = np.maximum(block_durations_sec, 1e-6)
-
-    # Hitung kecepatan ekuivalen sekadar untuk pelaporan (bukan untuk mengunci waktu)
-    equivalent_feedrate = (effective_distance / safe_durations) * 60.0
-    equivalent_feedrate = np.where(df_parsed['Is_Motion_Block'] == 1, equivalent_feedrate, 0.0)
-
-    df_parsed['Predicted_Feedrate_mm_min'] = equivalent_feedrate
+    df_parsed['Predicted_Feedrate_mm_min'] = predicted_feedrate
+    block_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, (effective_distance / predicted_feedrate) * 60.0, 0.0)
     df_parsed['Estimated_Duration_Sec'] = block_durations_sec
 
     total_time_sec = float(np.sum(block_durations_sec))

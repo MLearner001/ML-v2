@@ -37,7 +37,7 @@ def build_bilstm_model(input_shape: Tuple[int, int], learning_rate: float = 1e-3
     optimizer = optimizers.AdamW(learning_rate=learning_rate, weight_decay=1e-3)
 
     # Fase 2: Gunakan Huber Loss.
-    # Karena target variabel (Duration_Sec) sudah di log1p + StandardScaler di preprocessor (bisa bernilai negatif),
+    # Karena target variabel (Target_Feedrate) sudah di log1p + StandardScaler di preprocessor (bisa bernilai negatif),
     # kita tidak boleh menggunakan MSLE karena MSLE akan memaksa semua nilai negatif menjadi 0, menghancurkan ground-truth.
     model.compile(optimizer=optimizer, loss=tf.keras.losses.Huber(delta=1.0), metrics=["mae", "mse"])
 
