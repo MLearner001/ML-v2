@@ -51,27 +51,20 @@ def predict_nc_file(mpf_filepath: str,
     # Jika blok non-motion (Delta=0), beri durasi 0 agar aman
     block_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, predicted_duration_sec, 0.0)
 
-    # --- [Fase 2] Menghitung ulang Feedrate yang setara (Opsional untuk pelaporan CSV) ---
-    # F = (Jarak / Waktu) * 60
-    # Hindari ZeroDivision jika model meprediksi waktu 0 detik pada blok gerak
+    # --- [Fase 2] MURNI AI PREDICTION (Tanpa Hard-Clipping) ---
+    # Karena model dilatih langsung memprediksi Duration_Sec (termasuk akselerasi/deselerasi),
+    # kita tidak boleh memotongnya dengan batas Cmd_F, agar hasil AI muncul secara murni (Actual Time).
+
     safe_durations = np.maximum(block_durations_sec, 1e-6)
+
+    # Hitung kecepatan ekuivalen sekadar untuk pelaporan (bukan untuk mengunci waktu)
     equivalent_feedrate = (effective_distance / safe_durations) * 60.0
-    # Jika itu blok non-motion, set feedrate laporan jadi 0
     equivalent_feedrate = np.where(df_parsed['Is_Motion_Block'] == 1, equivalent_feedrate, 0.0)
 
-    # --- Clipping pelaporan agar feedrate laporan tidak melebihi kecepatan limit G-code/Mesin ---
-    limit_f = df_parsed['Cmd_F'].values
-    equivalent_feedrate = np.minimum(equivalent_feedrate, limit_f)
-
-    # Rekalkulasi Estimated Duration Sec yang secara fisika selaras dengan feedrate yang sudah di-clip
-    # Jika feedrate ter-clip (turun) maka waktu aktual secara mekanika harus lebih lama.
-    recalculated_durations_sec = np.where(equivalent_feedrate > 1e-4, (effective_distance / equivalent_feedrate) * 60.0, 0.0)
-    recalculated_durations_sec = np.where(df_parsed['Is_Motion_Block'] == 1, recalculated_durations_sec, 0.0)
-
     df_parsed['Predicted_Feedrate_mm_min'] = equivalent_feedrate
-    df_parsed['Estimated_Duration_Sec'] = recalculated_durations_sec
+    df_parsed['Estimated_Duration_Sec'] = block_durations_sec
 
-    total_time_sec = float(np.sum(recalculated_durations_sec))
+    total_time_sec = float(np.sum(block_durations_sec))
     total_time_min = total_time_sec / 60.0
 
     # Simpan hasil analisis profil feedrate ke CSV
