@@ -71,8 +71,8 @@ def run_training(train_data, val_data,
 
     training_callbacks = [
         callbacks.ModelCheckpoint(model_save_path, monitor="val_loss", save_best_only=True, verbose=1),
-        callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=5, min_lr=1e-6, verbose=1),
-        callbacks.EarlyStopping(monitor="val_loss", patience=15, restore_best_weights=True, verbose=1)
+        callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.5, patience=3, min_lr=1e-6, verbose=1),
+        callbacks.EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True, verbose=1)
     ]
 
     # Tambahkan autosave (overwrite) setiap epoch ke dalam folder jika diminta
