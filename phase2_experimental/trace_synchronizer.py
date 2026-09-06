@@ -62,10 +62,8 @@ class SinuTrainSynchronizer:
 
         mapped_blocks = []
 
-        # Lacak absolute state untuk sinkronisasi
-        current_absolute_id = 1
-        last_valid_n_number = -1
-        last_mapped_id = None
+        # SinuTrain actLineNumber corresponds perfectly to G-Code N_Number
+        last_valid_n_number = None
 
         for idx, row in df.iterrows():
             try:
@@ -78,23 +76,13 @@ class SinuTrainSynchronizer:
             rot_moving = is_rotary_moving.iloc[idx]
 
             if raw_line > 0:
-                # Jika actLineNumber di SinuTrain secara drastis lebih kecil, berarti terjadi N99999 Reset
-                # Namun karena SinuTrain tidak mengekspos reset ini secara eksplisit kecuali dari logikanya,
-                # Kita asumsikan perubahan baris actLineNumber berkorespondensi langsung dengan
-                # pertambahan execution block di G-Code.
-
-                if raw_line != last_valid_n_number:
-                    # Baris berganti, maka increment pointer absolute ID jika itu valid
-                    if last_valid_n_number != -1:
-                        current_absolute_id += 1
-                    last_valid_n_number = raw_line
-
-                last_mapped_id = str(current_absolute_id)
-                mapped_blocks.append(str(current_absolute_id))
+                # G-Code line explicitly mapped
+                mapped_blocks.append(str(raw_line))
+                last_valid_n_number = str(raw_line)
 
             elif raw_line < 0 and rot_moving:
-                # Transisi CYCLE800 / Orientasi Bidang: Atribusikan ke blok parent CYCLE800
-                mapped_blocks.append(f"C800_{last_mapped_id}" if last_mapped_id else "INIT_IDLE")
+                # Transisi CYCLE800 / Orientasi Bidang: Atribusikan ke blok parent CYCLE800 (the positive N_number)
+                mapped_blocks.append(f"C800_{last_valid_n_number}" if last_valid_n_number else "INIT_IDLE")
             else:
                 # Idle tanpa pergerakan signifikan
                 mapped_blocks.append("IDLE")
@@ -124,58 +112,78 @@ class SinuTrainSynchronizer:
 
         while i < n_blocks:
             row = df_gcode.iloc[i]
-            block_id = str(row['Block_ID'])
+
+            # Identify the synchronization key using N_Number instead of Block_ID
+            # If N_Number is -1 (missing N line), it won't be explicitly in the trace counts
+            # and will fall into the cluster interpolation logic.
+            n_number = str(int(row['N_Number'])) if row['N_Number'] != -1 else "-1"
+
+            # Determine if this row is a CYCLE800 transition
+            if row.get('Is_Cycle800', 0) == 1:
+                sync_key = f"C800_{n_number}"
+            else:
+                sync_key = n_number
+
             delta_3d = row['Delta_3D']
             delta_rot = row['Delta_Rot']
 
             # Hitung jarak ekuivalen (translasi mm atau rotasi deg)
             dist = delta_3d if delta_3d > 1e-4 else delta_rot
 
-            # Cek apakah blok ini tercatat di trace
-            ticks = trace_counts.get(block_id, 0)
+            # Cek apakah N_Number ini tercatat di trace dan KITA PERTAMA KALI memprosesnya
+            # Note: Multiple G-Code actions can have the SAME N_Number (e.g. MCALL Expansion).
+            # To prevent double-counting the trace time for each sub-block, we must group them.
 
-            if ticks > 0:
-                # KASUS A: Blok Standar (Tercatat 1 atau lebih ticks di trace)
-                t_exec = ticks * self.dt  # Durasi dalam detik
-                # Harmonic Target Formula: Y = (Jarak / Waktu) * 60 (mm/min atau deg/min)
-                f_target = (dist / t_exec) * 60.0 if t_exec > 0 and dist > 0 else row['Cmd_F']
+            # Start clustering
+            cluster_indices = [i]
+            j = i + 1
 
-                durations.append(t_exec)
-                target_feedrates.append(f_target)
-                i += 1
-            else:
-                # KASUS B: Micro-blocks Kluster (Beberapa baris tereksekusi dalam 1 jendela sampling 4ms)
-                # Kumpulkan seluruh micro-blocks berturutan hingga menemukan blok yang tercatat di trace
-                cluster_indices = [i]
-                j = i + 1
-                while j < n_blocks and trace_counts.get(str(df_gcode.iloc[j]['Block_ID']), 0) == 0:
+            # Find all subsequent rows that share this exact SAME N_Number (sub-blocks)
+            # OR blocks that have NO N_Number (-1) which fall under the same execution window
+            while j < n_blocks:
+                next_n = str(int(df_gcode.iloc[j]['N_Number'])) if df_gcode.iloc[j]['N_Number'] != -1 else "-1"
+                # Group if it's the exact same explicit N_number, or if it's an N-less block
+                if next_n == n_number or next_n == "-1":
                     cluster_indices.append(j)
                     j += 1
-
-                # Jendela waktu kluster ini minimal dialokasikan 1 interval (4ms) atau dialokasikan proporsional
-                cluster_ticks = 1.0  # Jendela 4ms
-                cluster_dt = cluster_ticks * self.dt
-
-                cluster_dists = [
-                    df_gcode.iloc[k]['Delta_3D'] if df_gcode.iloc[k]['Delta_3D'] > 1e-4 else df_gcode.iloc[k]['Delta_Rot']
-                    for k in cluster_indices
-                ]
-                total_cluster_dist = sum(cluster_dists)
-
-                # Distance-Weighted Spatial Interpolation
-                if total_cluster_dist > 1e-6:
-                    f_group = (total_cluster_dist / cluster_dt) * 60.0
-                    for k, d in zip(cluster_indices, cluster_dists):
-                        weight = d / total_cluster_dist
-                        t_sub = weight * cluster_dt
-                        durations.append(t_sub)
-                        target_feedrates.append(f_group)
                 else:
-                    for _ in cluster_indices:
-                        durations.append(cluster_dt / len(cluster_indices))
-                        target_feedrates.append(row['Cmd_F'])
+                    # Next explicit N_number found, break cluster
+                    break
 
-                i = j  # Lompat ke blok berikutnya
+            # Now we look at the ticks assigned to this entire N_Number cluster
+            ticks = trace_counts.get(sync_key, 0)
+
+            if ticks > 0:
+                # KASUS A: Cluster ini tereksekusi dan tercatat di trace
+                cluster_dt = ticks * self.dt
+            else:
+                # KASUS B: Micro-blocks Kluster yang sama sekali melompati trace (0 ticks)
+                # Jendela waktu kluster ini minimal dialokasikan 1 interval (4ms)
+                cluster_dt = 1.0 * self.dt
+
+            # Distance-Weighted Spatial Interpolation di dalam kluster
+            cluster_dists = [
+                df_gcode.iloc[k]['Delta_3D'] if df_gcode.iloc[k]['Delta_3D'] > 1e-4 else df_gcode.iloc[k]['Delta_Rot']
+                for k in cluster_indices
+            ]
+            total_cluster_dist = sum(cluster_dists)
+
+            if total_cluster_dist > 1e-6:
+                f_group = (total_cluster_dist / cluster_dt) * 60.0
+                for k, d in zip(cluster_indices, cluster_dists):
+                    weight = d / total_cluster_dist
+                    t_sub = weight * cluster_dt
+                    durations.append(t_sub)
+                    target_feedrates.append(f_group)
+            else:
+                # Gerakan diam tapi memakan waktu (misal Dwell atau eksekusi logika)
+                for k in cluster_indices:
+                    t_sub = cluster_dt / len(cluster_indices)
+                    durations.append(t_sub)
+                    # Jika diam, target feedrate fallback ke Command
+                    target_feedrates.append(df_gcode.iloc[k]['Cmd_F'])
+
+            i = j  # Lompat ke blok / N_Number berikutnya
 
         df_gcode['Duration_Sec'] = durations
         df_gcode['Target_Feedrate'] = target_feedrates
